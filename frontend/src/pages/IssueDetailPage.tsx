@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { dummyIssues } from '../data/dummyData';
 import { MapPin, Clock, Eye, MessageSquare, ChevronUp, ChevronDown, CheckCircle2, Share2, ArrowLeft } from 'lucide-react';
