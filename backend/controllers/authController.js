@@ -11,7 +11,18 @@ exports.register = async (req, res, next) => {
     user = await User.create({ name, email, password: hashedPassword });
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
     res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production' });
-    res.status(201).json({ user: { id: user._id, name: user.name, email: user.email }, token });
+    res.status(201).json({
+      user: {
+        id: user._id,
+        anonymousHandle: user.anonymousHandle,
+        role: user.role,
+        reportCount: user.reportCount,
+        resolvedCount: user.resolvedCount,
+        notificationsEnabled: user.notificationsEnabled,
+        joinedAt: user.createdAt,
+      },
+      token
+    });
   } catch (err) {
     next(err);
   }
@@ -26,7 +37,18 @@ exports.login = async (req, res, next) => {
     if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
     res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production' });
-    res.json({ user: { id: user._id, name: user.name, email: user.email }, token });
+    res.json({
+      user: {
+        id: user._id,
+        anonymousHandle: user.anonymousHandle,
+        role: user.role,
+        reportCount: user.reportCount,
+        resolvedCount: user.resolvedCount,
+        notificationsEnabled: user.notificationsEnabled,
+        joinedAt: user.createdAt,
+      },
+      token
+    });
   } catch (err) {
     next(err);
   }

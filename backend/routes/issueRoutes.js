@@ -9,6 +9,7 @@ const {
   deleteIssue,
   voteIssue
 } = require('../controllers/issueController');
+const { getUpdates, postUpdate } = require('../controllers/updateController');
 const auth = require('../middleware/auth');
 const validate = require('../middleware/validate');
 
@@ -33,5 +34,12 @@ router.get('/:id', getIssue);
 router.put('/:id', auth, updateIssue);
 router.delete('/:id', auth, deleteIssue);
 router.post('/:id/vote', auth, voteIssue);
+
+// Authority updates (replaces comments)
+router.get('/:id/updates', getUpdates);
+router.post('/:id/updates', auth, upload.single('image'), [
+  body('message').notEmpty().withMessage('Message is required'),
+  body('tag').isIn(['work_in_progress', 'finished']).withMessage('Tag must be work_in_progress or finished'),
+], validate, postUpdate);
 
 module.exports = router;

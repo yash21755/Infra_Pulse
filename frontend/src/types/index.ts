@@ -1,6 +1,7 @@
 export type IssueStatus = 'open' | 'in_progress' | 'resolved';
 export type IssuePriority = 'critical' | 'high' | 'medium' | 'low';
 export type UserRole = 'student' | 'faculty' | 'authority';
+export type UpdateTag = 'work_in_progress' | 'finished';
 
 export type IssueCategory =
   | 'Sanitation'
@@ -27,11 +28,18 @@ export interface IssueImage {
   type: 'report' | 'proof_of_work';
 }
 
-export interface ProofOfWork {
-  resolvedBy: string;
-  resolvedAt: string;
-  description: string;
-  images: IssueImage[];
+export interface AuthorityUpdate {
+  id: string;
+  issueId: string;
+  author: {
+    id: string;
+    anonymousHandle: string;
+    role: UserRole;
+  };
+  message: string;
+  tag: UpdateTag;
+  imageUrl?: string;
+  createdAt: string;
 }
 
 export interface Issue {
@@ -50,7 +58,6 @@ export interface Issue {
   reportedAt: string;
   updatedAt: string;
   similarityScore?: number;
-  proofOfWork?: ProofOfWork;
   commentCount: number;
   viewCount: number;
 }
@@ -63,4 +70,4 @@ export interface User {
   resolvedCount: number;
   joinedAt: string;
   notificationsEnabled: boolean;
-}
+}

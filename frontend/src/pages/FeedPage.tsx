@@ -4,20 +4,52 @@ import { Button } from '../components/ui/Button';
 import axios from 'axios';
 import { Search, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import type { Issue } from '../types';
+
+/** Normalize a raw MongoDB issue document into the frontend Issue shape */
+function normalizeIssue(raw: any): Issue {
+  return {
+    id: String(raw._id ?? raw.id),
+    title: raw.title ?? '',
+    description: raw.description ?? '',
+    category: raw.category ?? 'Electrical',
+    tags: raw.tags ?? [],
+    status: raw.status ?? 'open',
+    priority: raw.priority ?? 'medium',
+    // votes is an array of user IDs in the backend
+    upvotes: Array.isArray(raw.votes) ? raw.votes.length : (raw.upvotes ?? 0),
+    downvotes: raw.downvotes ?? 0,
+    userVote: raw.userVote ?? null,
+    location: raw.location ?? { lat: 0, lng: 0, label: 'Unknown' },
+    images: raw.imageUrl
+      ? [{ id: raw._id, url: raw.imageUrl, uploadedAt: raw.createdAt ?? new Date().toISOString(), type: 'report' as const }]
+      : (raw.images ?? []),
+    reportedAt: raw.createdAt ?? new Date().toISOString(),
+    updatedAt: raw.updatedAt ?? new Date().toISOString(),
+    commentCount: raw.commentCount ?? 0,
+    viewCount: raw.viewCount ?? 0,
+  };
+}
 
 export const FeedPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [issues, setIssues] = useState<any[]>([]);
+  const [issues, setIssues] = useState<Issue[]>([]);
   const [statusFilter, setStatusFilter] = useState('All');
-  const [tab, setTab] = useState('Trending');
+  const [tab, setTab] = useState('Newest');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const fetchIssues = () => {
     setLoading(true);
+    setError('');
     axios.get('/api/issues').then(res => {
-      setIssues(Array.isArray(res.data) ? res.data : []);
+      const raw = Array.isArray(res.data) ? res.data : [];
+      setIssues(raw.map(normalizeIssue));
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => {
+      setError('Failed to load issues. Make sure the backend is running.');
+      setLoading(false);
+    });
   };
 
   useEffect(fetchIssues, []);
@@ -26,6 +58,7 @@ export const FeedPage: React.FC = () => {
     issue.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     issue.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
   if (statusFilter !== 'All') {
     filteredIssues = filteredIssues.filter(issue => {
       if (statusFilter === 'Open') return issue.status === 'open';
@@ -34,10 +67,11 @@ export const FeedPage: React.FC = () => {
       return true;
     });
   }
+
   if (tab === 'Trending') {
     filteredIssues = [...filteredIssues].sort((a, b) => (b.upvotes - b.downvotes) - (a.upvotes - a.downvotes));
   } else if (tab === 'Newest') {
-    filteredIssues = [...filteredIssues].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    filteredIssues = [...filteredIssues].sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime());
   } else if (tab === 'Resolved') {
     filteredIssues = filteredIssues.filter(issue => issue.status === 'resolved');
   }
@@ -56,6 +90,7 @@ export const FeedPage: React.FC = () => {
           </Button>
         </Link>
       </div>
+
       <div className="flex flex-col md:flex-row gap-8">
         {/* Left Sidebar - Filters */}
         <div className="w-full md:w-64 shrink-0 space-y-6">
@@ -89,10 +124,11 @@ export const FeedPage: React.FC = () => {
             </div>
           </div>
         </div>
+
         {/* Main Feed Area */}
         <div className="flex-1 space-y-4">
           <div className="flex gap-2 border-b border-slate-200 pb-px mb-4">
-            {['Trending', 'Newest', 'Resolved'].map((tabName, idx) => (
+            {['Trending', 'Newest', 'Resolved'].map((tabName) => (
               <button
                 key={tabName}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === tabName ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
@@ -102,12 +138,22 @@ export const FeedPage: React.FC = () => {
               </button>
             ))}
           </div>
+
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
           <div className="space-y-4">
-            {loading ? <div className="text-center py-12">Loading...</div> :
+            {loading ? (
+              <div className="text-center py-12 text-slate-500">Loading issues...</div>
+            ) : (
               filteredIssues.map((issue, idx) => (
-                <IssueCard key={issue._id} issue={issue} rank={idx + 1} onAction={fetchIssues} />
-              ))}
-            {filteredIssues.length === 0 && !loading && (
+                <IssueCard key={issue.id} issue={issue} rank={idx + 1} onAction={fetchIssues} />
+              ))
+            )}
+            {filteredIssues.length === 0 && !loading && !error && (
               <div className="text-center py-12 bg-slate-50 rounded-xl border border-slate-200 border-dashed">
                 <p className="text-slate-500">No issues found matching your criteria.</p>
               </div>

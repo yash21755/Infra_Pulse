@@ -2,23 +2,37 @@ import React, { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
-import { Shield, Info } from 'lucide-react';
+import { Shield } from 'lucide-react';
 
 export const LoginPage = () => {
   const [isRegister, setIsRegister] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
   const auth = useContext(AuthContext);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    if (isRegister) {
-      await auth?.register();
-    } else {
-      await auth?.login();
+    setError('');
+    try {
+      if (isRegister) {
+        await auth?.register(name, email, password);
+      } else {
+        await auth?.login(email, password);
+      }
+      navigate('/feed');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Something went wrong. Please try again.';
+      setError(msg);
+    } finally {
+      setIsLoading(false);
     }
-    navigate('/feed');
   };
 
   return (
@@ -35,30 +49,55 @@ export const LoginPage = () => {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-sm sm:rounded-2xl border border-slate-200 sm:px-10">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
+              {error}
+            </div>
+          )}
           <form className="space-y-6" onSubmit={handleSubmit}>
+            {isRegister && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Full Name</label>
+                <div className="mt-1">
+                  <input
+                    required
+                    type="text"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg placeholder-slate-400 focus:outline-none focus:ring-brand-500 focus:border-brand-500"
+                    placeholder="Your full name"
+                  />
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-slate-700">College Email address</label>
               <div className="mt-1">
-                <input required type="email" className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg placeholder-slate-400 focus:outline-none focus:ring-brand-500 focus:border-brand-500" placeholder="student@college.edu" />
+                <input
+                  required
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg placeholder-slate-400 focus:outline-none focus:ring-brand-500 focus:border-brand-500"
+                  placeholder="student@college.edu"
+                />
               </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700">Password</label>
               <div className="mt-1">
-                <input required type="password" className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg placeholder-slate-400 focus:outline-none focus:ring-brand-500 focus:border-brand-500" />
+                <input
+                  required
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg placeholder-slate-400 focus:outline-none focus:ring-brand-500 focus:border-brand-500"
+                  placeholder="••••••••"
+                />
               </div>
             </div>
-
-            {isRegister && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Role</label>
-                <select className="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-slate-300 focus:outline-none focus:ring-brand-500 focus:border-brand-500 rounded-lg">
-                  <option>Student</option>
-                  <option>Faculty</option>
-                </select>
-              </div>
-            )}
 
             <Button type="submit" variant="primary" className="w-full justify-center" disabled={isLoading}>
               {isLoading ? 'Processing...' : isRegister ? 'Create Account' : 'Sign In'}
@@ -75,13 +114,13 @@ export const LoginPage = () => {
               </div>
             </div>
             <div className="mt-6 text-center">
-              <button onClick={() => setIsRegister(!isRegister)} className="text-brand-600 hover:text-brand-500 font-medium">
+              <button onClick={() => { setIsRegister(!isRegister); setError(''); }} className="text-brand-600 hover:text-brand-500 font-medium">
                 {isRegister ? 'Sign in instead' : 'Create an account'}
               </button>
             </div>
           </div>
         </div>
-        
+
         {isRegister && (
           <div className="mt-8 bg-brand-50 border border-brand-200 rounded-xl p-4 flex gap-3 text-sm text-brand-800">
             <Shield className="shrink-0 text-brand-600" size={20} />

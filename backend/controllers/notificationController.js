@@ -22,3 +22,15 @@ exports.markAsRead = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.markAllAsRead = async (req, res, next) => {
+  try {
+    await Notification.updateMany(
+      { user: req.user.id, read: false },
+      { read: true }
+    );
+    res.json({ message: 'All notifications marked as read' });
+  } catch (err) {
+    next(err);
+  }
+};
