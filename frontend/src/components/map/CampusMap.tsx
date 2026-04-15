@@ -31,7 +31,8 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
     if (positions.length > 0) {
-      map.fitBounds(L.latLngBounds(positions), { padding: [48, 48], maxZoom: 18 });
+      const bounds = L.latLngBounds(positions);
+      map.fitBounds(bounds, { padding: [48, 48], maxZoom: 18 });
     }
   }, [positions.length]);
   return null;
@@ -43,7 +44,11 @@ interface CampusMapProps {
 }
 
 export const CampusMap = ({ statusFilter = 'All', priorityFilters = ['Critical', 'High', 'Medium', 'Low'] }: CampusMapProps) => {
-  const defaultCenter: [number, number] = [28.5456, 77.2732];
+  const defaultCenter: [number, number] = [25.42996, 81.77219];
+  const campusBounds: L.LatLngTuple[] = [
+    [25.426, 81.768],
+    [25.433, 81.775]
+  ];
   const [issues, setIssues] = useState<any[]>([]);
 
   useEffect(() => {
@@ -53,8 +58,13 @@ export const CampusMap = ({ statusFilter = 'All', priorityFilters = ['Critical',
   }, []);
 
   const filtered = useMemo(() => {
+    const mapBounds = L.latLngBounds(campusBounds);
     return issues.filter(issue => {
       if (!issue.location?.lat || !issue.location?.lng) return false;
+      
+      // Only show issues inside the campus bounds
+      if (!mapBounds.contains([issue.location.lat, issue.location.lng])) return false;
+
       if (statusFilter !== 'All') {
         const statusMap: Record<string, string> = {
           'Open': 'open', 'In Progress': 'in_progress', 'Resolved': 'resolved',
@@ -78,7 +88,11 @@ export const CampusMap = ({ statusFilter = 'All', priorityFilters = ['Critical',
 
   return (
     <div className="w-full h-full relative z-0">
-      <MapContainer center={defaultCenter} zoom={17} style={{ height: '100%', width: '100%' }}>
+      <MapContainer 
+        center={defaultCenter} 
+        zoom={17} 
+        style={{ height: '100%', width: '100%' }}
+      >
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

@@ -14,10 +14,19 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
+const defaultCenter: [number, number] = [25.42996, 81.77219];
+const campusBounds: L.LatLngTuple[] = [
+  [25.426, 81.768],
+  [25.433, 81.775]
+];
+
 function LocationMarker({ position, setPosition }: { position: L.LatLngExpression, setPosition: (p: [number, number]) => void }) {
   useMapEvents({
     click(e) {
-      setPosition([e.latlng.lat, e.latlng.lng]);
+      const bounds = L.latLngBounds(campusBounds);
+      if (bounds.contains(e.latlng)) {
+        setPosition([e.latlng.lat, e.latlng.lng]);
+      }
     },
   });
   return <Marker position={position} />;
@@ -35,7 +44,7 @@ export const ReportPage = () => {
     description: '',
     locationLabel: ''
   });
-  const [position, setPosition] = useState<[number, number]>([28.5456, 77.2732]);
+  const [position, setPosition] = useState<[number, number]>(defaultCenter);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
@@ -137,7 +146,11 @@ export const ReportPage = () => {
           <div className="animate-fade-in">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2 dark:text-white"><MapPin className="text-brand-500"/>Location</h2>
             <div className="h-64 bg-slate-100 dark:bg-slate-800 rounded-lg mb-4 overflow-hidden border border-slate-200 dark:border-slate-800">
-              <MapContainer center={position} zoom={17} style={{ height: '100%', width: '100%' }}>
+              <MapContainer 
+                center={defaultCenter} 
+                zoom={17} 
+                style={{ height: '100%', width: '100%' }}
+              >
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                 <LocationMarker position={position} setPosition={setPosition} />
               </MapContainer>
