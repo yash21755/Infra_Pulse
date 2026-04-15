@@ -15,8 +15,9 @@ dotenv.config();
 // Connect to MongoDB
 connectDB();
 
+const express = require('express');
 const app = express();
-
+app.use('/uploads', express.static('uploads'));
 // Middleware
 app.use(helmet());
 app.use(express.json());
