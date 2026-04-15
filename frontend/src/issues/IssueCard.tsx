@@ -20,9 +20,9 @@ function timeAgo(iso: string) {
 }
 
 const statusColors = {
-  open: 'bg-slate-100 text-slate-700',
-  in_progress: 'bg-amber-100 text-amber-700',
-  resolved: 'bg-emerald-100 text-emerald-700',
+  open: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
+  in_progress: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400',
+  resolved: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',
 };
 const statusLabels = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved' };
 
@@ -49,7 +49,7 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, rank, onAction }) =
 
   return (
     <Link to={`/issues/${issue.id}`} className="block group">
-      <div className="flex bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-slate-100 border-l-4 border-l-brand-500 overflow-hidden">
+      <div className="flex bg-white dark:bg-slate-900 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-slate-100 dark:border-slate-800 border-l-4 border-l-brand-500 overflow-hidden">
 
         {/* Thumbnail */}
         {thumbUrl ? (
@@ -61,8 +61,8 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, rank, onAction }) =
             />
           </div>
         ) : (
-          <div className="hidden sm:flex w-20 shrink-0 items-center justify-center bg-slate-50 border-r border-slate-100">
-            <div className="flex flex-col items-center gap-1 text-slate-300">
+          <div className="hidden sm:flex w-20 shrink-0 items-center justify-center bg-slate-50 dark:bg-slate-900/50 border-r border-slate-100 dark:border-slate-800">
+            <div className="flex flex-col items-center gap-1 text-slate-300 dark:text-slate-600">
               <ImageIcon size={20} />
             </div>
           </div>
@@ -71,23 +71,23 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, rank, onAction }) =
         <div className="flex flex-1 gap-3 p-4 min-w-0">
 
           {/* Rank */}
-          <div className="hidden sm:flex items-center justify-center w-7 text-xl font-display font-bold text-slate-200 shrink-0">
+          <div className="hidden sm:flex items-center justify-center w-7 text-xl font-display font-bold text-slate-200 dark:text-slate-700 shrink-0">
             #{rank}
           </div>
 
           {/* Vote Column */}
           <div className="flex flex-col items-center gap-0.5 shrink-0">
             <button
-              className={`p-1 rounded hover:bg-slate-100 transition-colors ${issue.userVote === 'up' ? 'text-brand-600' : 'text-slate-400'}`}
+              className={`p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${issue.userVote === 'up' ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'}`}
               onClick={(e) => handleVote(e, 'up')}
             >
               <ChevronUp size={22} strokeWidth={issue.userVote === 'up' ? 3 : 2} />
             </button>
-            <span className="font-mono font-semibold text-sm text-slate-700">
+            <span className="font-mono font-semibold text-sm text-slate-700 dark:text-slate-300">
               {issue.upvotes - issue.downvotes}
             </span>
             <button
-              className={`p-1 rounded hover:bg-slate-100 transition-colors ${issue.userVote === 'down' ? 'text-rose-500' : 'text-slate-400'}`}
+              className={`p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${issue.userVote === 'down' ? 'text-rose-500' : 'text-slate-400 dark:text-slate-500'}`}
               onClick={(e) => handleVote(e, 'down')}
             >
               <ChevronDown size={22} strokeWidth={issue.userVote === 'down' ? 3 : 2} />
@@ -97,7 +97,7 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, rank, onAction }) =
           {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex justify-between items-start gap-3 mb-1">
-              <h3 className="font-display font-semibold text-slate-900 text-base group-hover:text-brand-600 transition-colors line-clamp-1">
+              <h3 className="font-display font-semibold text-slate-900 dark:text-white text-base group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors line-clamp-1">
                 {issue.title}
               </h3>
               <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[issue.status as keyof typeof statusColors]}`}>
@@ -105,11 +105,11 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, rank, onAction }) =
               </span>
             </div>
 
-            <p className="text-slate-500 text-sm line-clamp-2 mb-3">
+            <p className="text-slate-500 dark:text-slate-400 text-sm line-clamp-2 mb-3">
               {issue.description}
             </p>
 
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 font-medium">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 dark:text-slate-500 font-medium">
               <div className="flex items-center gap-1">
                 <MapPin size={12} />
                 <span className="truncate max-w-[160px]">{issue.location?.label || 'Unknown'}</span>
@@ -119,7 +119,7 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, rank, onAction }) =
                 {timeAgo(issue.reportedAt)}
               </div>
               {issue.category && (
-                <span className="px-2 py-0.5 bg-brand-50 text-brand-600 rounded-full text-xs font-semibold">
+                <span className="px-2 py-0.5 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-full text-xs font-semibold">
                   {issue.category}
                 </span>
               )}

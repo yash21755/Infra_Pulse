@@ -96,38 +96,38 @@ export const ReportPage = () => {
 
   return (
     <div className="max-w-2xl mx-auto py-8 px-4 sm:px-6">
-      <h1 className="text-3xl font-display font-bold text-slate-900 mb-6">Report an Issue</h1>
+      <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white mb-6">Report an Issue</h1>
 
       {/* Stepper */}
       <div className="flex items-center justify-between mb-8 relative">
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-slate-200 -z-10 rounded-full"></div>
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-slate-200 dark:bg-slate-800 -z-10 rounded-full"></div>
         <div className={`absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-brand-600 -z-10 rounded-full transition-all duration-300`} style={{ width: `${((step - 1) / 3) * 100}%` }}></div>
 
         {[1, 2, 3, 4].map(num => (
-          <div key={num} className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${step >= num ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+          <div key={num} className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${step >= num ? 'bg-brand-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
             {step > num ? <CheckCircle size={16} /> : num}
           </div>
         ))}
       </div>
 
-      <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200">
+      <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
         {step === 1 && (
           <div className="animate-fade-in">
-            <h2 className="text-xl font-bold mb-4">Issue Details</h2>
+            <h2 className="text-xl font-bold mb-4 dark:text-white">Issue Details</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
-                <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="e.g. Broken water cooler in Block B" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Title</label>
+                <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="e.g. Broken water cooler in Block B" className="w-full p-3 bg-white dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none placeholder-slate-400 dark:placeholder-slate-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
-                <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none bg-white">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category</label>
+                <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-3 bg-white dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none">
                   <option>Electrical</option><option>Sanitation</option><option>Plumbing</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                <textarea rows={4} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Provide specific details..." className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"></textarea>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
+                <textarea rows={4} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Provide specific details..." className="w-full p-3 bg-white dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none placeholder-slate-400 dark:placeholder-slate-500"></textarea>
               </div>
             </div>
           </div>
@@ -135,25 +135,25 @@ export const ReportPage = () => {
 
         {step === 2 && (
           <div className="animate-fade-in">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><MapPin className="text-brand-500"/>Location</h2>
-            <div className="h-64 bg-slate-100 rounded-lg mb-4 overflow-hidden border border-slate-200">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2 dark:text-white"><MapPin className="text-brand-500"/>Location</h2>
+            <div className="h-64 bg-slate-100 dark:bg-slate-800 rounded-lg mb-4 overflow-hidden border border-slate-200 dark:border-slate-800">
               <MapContainer center={position} zoom={17} style={{ height: '100%', width: '100%' }}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                 <LocationMarker position={position} setPosition={setPosition} />
               </MapContainer>
             </div>
-            <p className="text-xs text-slate-500 mb-3">Click on the map to pin the exact location of the issue.</p>
-            <input type="text" value={formData.locationLabel} onChange={e => setFormData({...formData, locationLabel: e.target.value})} placeholder="Location Label (e.g. Main Library, 2nd Floor)" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500" />
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Click on the map to pin the exact location of the issue.</p>
+            <input type="text" value={formData.locationLabel} onChange={e => setFormData({...formData, locationLabel: e.target.value})} placeholder="Location Label (e.g. Main Library, 2nd Floor)" className="w-full p-3 bg-white dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 placeholder-slate-400 dark:placeholder-slate-500" />
           </div>
         )}
 
         {step === 3 && (
           <div className="animate-fade-in">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Camera className="text-brand-500"/> Add Photos</h2>
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2 dark:text-white"><Camera className="text-brand-500"/> Add Photos</h2>
             <input type="file" id="report-photo" className="hidden" accept="image/*" onChange={handleImageChange} />
 
             {imagePreview ? (
-              <div className="relative rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+              <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm">
                 <img
                   src={imagePreview}
                   alt="Upload preview"
@@ -166,18 +166,18 @@ export const ReportPage = () => {
                 >
                   <X size={16} />
                 </button>
-                <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 text-sm text-slate-600 flex items-center justify-between">
+                <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-sm text-slate-600 dark:text-slate-400 flex items-center justify-between">
                   <span className="truncate max-w-xs">{imageFile?.name}</span>
-                  <label htmlFor="report-photo" className="text-brand-600 hover:text-brand-700 font-medium cursor-pointer ml-2 shrink-0">
+                  <label htmlFor="report-photo" className="text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 font-medium cursor-pointer ml-2 shrink-0">
                     Change
                   </label>
                 </div>
               </div>
             ) : (
-              <label htmlFor="report-photo" className="border-2 border-dashed border-brand-300 bg-brand-50 rounded-xl p-8 text-center cursor-pointer hover:bg-brand-100 transition-colors block">
+              <label htmlFor="report-photo" className="border-2 border-dashed border-brand-300 dark:border-brand-500/30 bg-brand-50 dark:bg-brand-500/10 rounded-xl p-8 text-center cursor-pointer hover:bg-brand-100 dark:hover:bg-brand-500/20 transition-colors block">
                 <Camera size={48} className="mx-auto text-brand-400 mb-3" />
-                <p className="text-brand-700 font-medium">Click to upload or drag and drop</p>
-                <p className="text-sm text-brand-500 mt-1">PNG, JPG up to 5MB</p>
+                <p className="text-brand-700 dark:text-brand-400 font-medium">Click to upload or drag and drop</p>
+                <p className="text-sm text-brand-500 dark:text-brand-400/80 mt-1">PNG, JPG up to 5MB</p>
               </label>
             )}
           </div>
@@ -185,28 +185,28 @@ export const ReportPage = () => {
 
         {step === 4 && (
           <div className="animate-fade-in">
-            <h2 className="text-xl font-bold mb-4">Review & Submit</h2>
-            <div className="bg-slate-50 p-4 rounded-xl space-y-3 text-sm">
-              <p><span className="font-semibold text-slate-700">Title:</span> {formData.title || <span className="text-slate-400 italic">Not provided</span>}</p>
-              <p><span className="font-semibold text-slate-700">Category:</span> {formData.category}</p>
-              <p><span className="font-semibold text-slate-700">Description:</span> {formData.description || <span className="text-slate-400 italic">Not provided</span>}</p>
-              <p><span className="font-semibold text-slate-700">Location:</span> {formData.locationLabel || `${position[0].toFixed(4)}, ${position[1].toFixed(4)}`}</p>
+            <h2 className="text-xl font-bold mb-4 dark:text-white">Review & Submit</h2>
+            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl space-y-3 text-sm border border-slate-100 dark:border-slate-800">
+              <p><span className="font-semibold text-slate-700 dark:text-slate-300">Title:</span> <span className="dark:text-slate-400">{formData.title || <span className="text-slate-400 dark:text-slate-500 italic">Not provided</span>}</span></p>
+              <p><span className="font-semibold text-slate-700 dark:text-slate-300">Category:</span> <span className="dark:text-slate-400">{formData.category}</span></p>
+              <p><span className="font-semibold text-slate-700 dark:text-slate-300">Description:</span> <span className="dark:text-slate-400">{formData.description || <span className="text-slate-400 dark:text-slate-500 italic">Not provided</span>}</span></p>
+              <p><span className="font-semibold text-slate-700 dark:text-slate-300">Location:</span> <span className="dark:text-slate-400">{formData.locationLabel || `${position[0].toFixed(4)}, ${position[1].toFixed(4)}`}</span></p>
               {imagePreview && (
                 <div>
-                  <p className="font-semibold text-slate-700 mb-2">Attached Photo:</p>
-                  <img src={imagePreview} alt="Preview" className="rounded-lg max-h-40 object-cover border border-slate-200" />
+                  <p className="font-semibold text-slate-700 dark:text-slate-300 mb-2">Attached Photo:</p>
+                  <img src={imagePreview} alt="Preview" className="rounded-lg max-h-40 object-cover border border-slate-200 dark:border-slate-800" />
                 </div>
               )}
             </div>
             {submitError && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
+              <div className="mt-4 p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-sm rounded-lg">
                 {submitError}
               </div>
             )}
           </div>
         )}
 
-        <div className="flex justify-between mt-8 pt-4 border-t border-slate-100">
+        <div className="flex justify-between mt-8 pt-4 border-t border-slate-100 dark:border-slate-800">
           <Button variant="ghost" onClick={handlePrev} disabled={step === 1} className="gap-2">
             <ArrowLeft size={16} /> Back
           </Button>

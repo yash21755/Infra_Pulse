@@ -24,7 +24,10 @@ exports.createIssue = async (req, res, next) => {
 
 exports.getIssues = async (req, res, next) => {
   try {
-    const issues = await Issue.find().populate('reporter', 'name').populate('assignee', 'name');
+    const issues = await Issue.find()
+      .populate('reporter', 'anonymousHandle role')
+      .populate('assignee', 'anonymousHandle role')
+      .sort({ createdAt: -1 });
     res.json(issues);
   } catch (err) {
     next(err);
@@ -33,7 +36,9 @@ exports.getIssues = async (req, res, next) => {
 
 exports.getIssue = async (req, res, next) => {
   try {
-    const issue = await Issue.findById(req.params.id).populate('reporter', 'name').populate('assignee', 'name');
+    const issue = await Issue.findById(req.params.id)
+      .populate('reporter', 'anonymousHandle role')
+      .populate('assignee', 'anonymousHandle role');
     if (!issue) return res.status(404).json({ message: 'Issue not found' });
     res.json(issue);
   } catch (err) {
@@ -68,17 +73,49 @@ exports.voteIssue = async (req, res, next) => {
   try {
     const issue = await Issue.findById(req.params.id);
     if (!issue) return res.status(404).json({ message: 'Issue not found' });
-    const userId = req.user.id;
-    if (issue.votes.includes(userId)) {
-      issue.votes.pull(userId);
-    } else {
-      issue.votes.push(userId);
-      if (issue.reporter.toString() !== userId.toString()) {
-        await Notification.create({ user: issue.reporter, message: `Someone upvoted your issue '${issue.title}'.` });
+
+    const userId  = req.user.id;
+    const type    = req.body.type; // 'up' | 'down'
+
+    const inUpvotes   = issue.votes.some(id => id.toString() === userId.toString());
+    const inDownvotes = issue.downvotes.some(id => id.toString() === userId.toString());
+
+    if (type === 'up') {
+      if (inUpvotes) {
+        // Same direction → remove vote
+        issue.votes.pull(userId);
+      } else {
+        // New upvote — remove from downvotes first if present
+        if (inDownvotes) issue.downvotes.pull(userId);
+        issue.votes.push(userId);
+        if (issue.reporter.toString() !== userId.toString()) {
+          await Notification.create({
+            user: issue.reporter,
+            message: `Someone upvoted your issue "${issue.title}".`,
+          });
+        }
+      }
+    } else if (type === 'down') {
+      if (inDownvotes) {
+        // Same direction → remove vote
+        issue.downvotes.pull(userId);
+      } else {
+        // New downvote — remove from upvotes first if present
+        if (inUpvotes) issue.votes.pull(userId);
+        issue.downvotes.push(userId);
       }
     }
+
     await issue.save();
-    res.json(issue);
+
+    // Return vote counts + identity arrays so client can derive userVote
+    res.json({
+      upvotes:   issue.votes.length,
+      downvotes: issue.downvotes.length,
+      // include the arrays so client knows its own vote state
+      upvoterIds:   issue.votes.map(id => id.toString()),
+      downvoterIds: issue.downvotes.map(id => id.toString()),
+    });
   } catch (err) {
     next(err);
   }

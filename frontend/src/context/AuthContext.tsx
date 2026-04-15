@@ -8,15 +8,15 @@ const API = 'http://localhost:5000/api';
 const SESSION_DURATION_MS = 30 * 60 * 1000;
 
 const KEYS = {
-  user:    'infra_pulse_user',
-  token:   'infra_pulse_token',
-  expiry:  'infra_pulse_session_expiry',
+  user:   'infra_pulse_user',
+  token:  'infra_pulse_token',
+  expiry: 'infra_pulse_session_expiry',
 };
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  sessionExpiresAt: number | null;   // Unix timestamp (ms) when session ends
+  sessionExpiresAt: number | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   register: (name: string, email: string, password: string) => Promise<void>;
@@ -24,7 +24,6 @@ interface AuthContextType {
 
 export const AuthContext = createContext<AuthContextType | null>(null);
 
-/** Maps the raw API user payload to the frontend User type */
 function mapApiUser(apiUser: any): User {
   return {
     id: String(apiUser.id ?? apiUser._id),
@@ -37,14 +36,12 @@ function mapApiUser(apiUser: any): User {
   };
 }
 
-/** Save a fresh 30-minute session window to localStorage */
 function stampSession(): number {
   const expiry = Date.now() + SESSION_DURATION_MS;
   localStorage.setItem(KEYS.expiry, String(expiry));
   return expiry;
 }
 
-/** Return stored expiry if still valid, otherwise null */
 function getValidExpiry(): number | null {
   const raw = localStorage.getItem(KEYS.expiry);
   if (!raw) return null;
@@ -56,20 +53,32 @@ function clearSession() {
   Object.values(KEYS).forEach(k => localStorage.removeItem(k));
 }
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
-  const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+/**
+ * Read session synchronously — used as the useState lazy initializer so that
+ * user is available on the VERY FIRST render, before any useEffect runs.
+ * This prevents ProtectedRoute from redirecting to /login on page refresh.
+ */
+function readSessionSync(): { user: User | null; expiry: number | null } {
+  const expiry = getValidExpiry();
+  if (!expiry) {
+    clearSession();
+    return { user: null, expiry: null };
+  }
+  try {
+    const raw = localStorage.getItem(KEYS.user);
+    const user = raw ? (JSON.parse(raw) as User) : null;
+    return { user, expiry };
+  } catch {
+    clearSession();
+    return { user: null, expiry: null };
+  }
+}
 
-  /** Schedule auto-logout exactly when the session expires */
-  const scheduleExpiry = useCallback((expiry: number) => {
-    if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
-    const remaining = expiry - Date.now();
-    if (remaining <= 0) return;
-    expiryTimerRef.current = setTimeout(() => {
-      performLogout();
-    }, remaining);
-  }, []);
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // ── Lazy initializers: run synchronously on first render ──
+  const [user,             setUser]             = useState<User | null>(() => readSessionSync().user);
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(() => readSessionSync().expiry);
+  const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const performLogout = useCallback(() => {
     if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
@@ -79,60 +88,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     axios.post(`${API}/auth/logout`, {}, { withCredentials: true }).catch(() => {});
   }, []);
 
-  /** Restore session on page load / refresh */
+  const scheduleExpiry = useCallback((expiry: number) => {
+    if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
+    const remaining = expiry - Date.now();
+    if (remaining <= 0) { performLogout(); return; }
+    expiryTimerRef.current = setTimeout(performLogout, remaining);
+  }, [performLogout]);
+
+  /** On mount: wire up the auto-logout timer for restored sessions */
   useEffect(() => {
-    const expiry = getValidExpiry();
-    if (!expiry) {
-      // Session expired or never started — clear stale data
-      clearSession();
-      return;
-    }
-    const storedUser = localStorage.getItem(KEYS.user);
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-      setSessionExpiresAt(expiry);
-      scheduleExpiry(expiry);
-    }
+    if (sessionExpiresAt) scheduleExpiry(sessionExpiresAt);
+    return () => { if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current); };
+  }, []); // intentionally empty — runs once on mount only
 
-    return () => {
-      if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
-    };
-  }, [scheduleExpiry]);
-
-  /** Extend session by another 30 min on user activity (mousemove / keydown) */
+  /** Extend session on user activity (throttled to once per minute) */
   useEffect(() => {
     if (!user) return;
-
-    const extendSession = () => {
-      if (!localStorage.getItem(KEYS.token)) return; // already logged out
-      const newExpiry = stampSession();
-      setSessionExpiresAt(newExpiry);
-      scheduleExpiry(newExpiry);
-    };
-
-    // Throttle — only refresh the stamp at most once per minute
     let lastActivity = 0;
     const throttled = () => {
+      if (!localStorage.getItem(KEYS.token)) return;
       const now = Date.now();
       if (now - lastActivity > 60_000) {
         lastActivity = now;
-        extendSession();
+        const newExpiry = stampSession();
+        setSessionExpiresAt(newExpiry);
+        scheduleExpiry(newExpiry);
       }
     };
-
     window.addEventListener('mousemove', throttled);
-    window.addEventListener('keydown', throttled);
-    window.addEventListener('click', throttled);
-
+    window.addEventListener('keydown',   throttled);
+    window.addEventListener('click',     throttled);
     return () => {
       window.removeEventListener('mousemove', throttled);
-      window.removeEventListener('keydown', throttled);
-      window.removeEventListener('click', throttled);
+      window.removeEventListener('keydown',   throttled);
+      window.removeEventListener('click',     throttled);
     };
   }, [user, scheduleExpiry]);
 
   const persistAuth = (mapped: User, token: string) => {
-    localStorage.setItem(KEYS.user, JSON.stringify(mapped));
+    localStorage.setItem(KEYS.user,  JSON.stringify(mapped));
     localStorage.setItem(KEYS.token, token);
     const expiry = stampSession();
     setUser(mapped);

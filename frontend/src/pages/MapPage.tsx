@@ -1,57 +1,86 @@
 import React, { useState } from 'react';
 import { CampusMap } from '../components/map/CampusMap';
-import { Filter } from 'lucide-react';
+import { Filter, X } from 'lucide-react';
+
+const PRIORITIES = ['Critical', 'High', 'Medium', 'Low'];
 
 export const MapPage = () => {
   const [showFilters, setShowFilters] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [priorityFilters, setPriorityFilters] = useState<string[]>(PRIORITIES);
+
+  const togglePriority = (p: string) => {
+    setPriorityFilters(prev =>
+      prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+    );
+  };
 
   return (
     <div className="relative w-full h-[calc(100vh-64px)] md:h-full">
-      {/* Map Background */}
-      <CampusMap />
+      {/* Map */}
+      <CampusMap statusFilter={statusFilter} priorityFilters={priorityFilters} />
 
-      {/* Floating Filter Overlay */}
+      {/* Floating Filter Panel */}
       <div className="absolute top-4 left-4 z-[400]">
-        <button 
+        <button
           onClick={() => setShowFilters(!showFilters)}
-          className="bg-white p-3 rounded-xl shadow-md border border-slate-200 text-slate-700 hover:text-brand-600 transition-colors flex items-center gap-2"
+          className="bg-white dark:bg-slate-900 px-4 py-2.5 rounded-xl shadow-md border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 font-medium text-sm"
         >
-          <Filter size={20} />
-          <span className="font-medium hidden sm:inline">Filters</span>
+          <Filter size={16} />
+          <span>Filters</span>
+          {(statusFilter !== 'All' || priorityFilters.length < PRIORITIES.length) && (
+            <span className="w-2 h-2 rounded-full bg-brand-500 ml-1" />
+          )}
         </button>
 
         {showFilters && (
-          <div className="mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 p-4 animate-fade-in">
-            <h3 className="font-bold text-slate-900 mb-3 text-sm">Status</h3>
-            <div className="space-y-2 mb-4">
+          <div className="mt-2 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 p-4 animate-fade-in">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm">Filters</h3>
+              <button onClick={() => setShowFilters(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400">
+                <X size={16} />
+              </button>
+            </div>
+
+            <h4 className="font-semibold text-slate-700 dark:text-slate-300 mb-2 text-xs uppercase tracking-wider">Status</h4>
+            <div className="space-y-1.5 mb-4">
               {['All', 'Open', 'In Progress', 'Resolved'].map(status => (
                 <label key={status} className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="map_status" className="text-brand-600 focus:ring-brand-500" defaultChecked={status === 'All'} />
-                  <span className="text-sm text-slate-700">{status}</span>
+                  <input
+                    type="radio"
+                    name="map_status"
+                    className="text-brand-600 focus:ring-brand-500"
+                    checked={statusFilter === status}
+                    onChange={() => setStatusFilter(status)}
+                  />
+                  <span className="text-sm text-slate-700 dark:text-slate-300">{status}</span>
                 </label>
               ))}
             </div>
-            
-            <h3 className="font-bold text-slate-900 mb-3 text-sm">Priority</h3>
-            <div className="space-y-2">
-              {['Critical', 'High', 'Medium', 'Low'].map(prio => (
+
+            <h4 className="font-semibold text-slate-700 dark:text-slate-300 mb-2 text-xs uppercase tracking-wider">Priority</h4>
+            <div className="space-y-1.5">
+              {PRIORITIES.map(prio => (
                 <label key={prio} className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="text-brand-600 rounded focus:ring-brand-500" defaultChecked />
-                  <span className="text-sm text-slate-700">{prio}</span>
+                  <input
+                    type="checkbox"
+                    className="text-brand-600 rounded focus:ring-brand-500"
+                    checked={priorityFilters.includes(prio)}
+                    onChange={() => togglePriority(prio)}
+                  />
+                  <span className="text-sm text-slate-700 dark:text-slate-300">{prio}</span>
                 </label>
               ))}
             </div>
+
+            <button
+              onClick={() => { setStatusFilter('All'); setPriorityFilters(PRIORITIES); }}
+              className="mt-4 w-full text-xs text-slate-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors text-center"
+            >
+              Reset filters
+            </button>
           </div>
         )}
-      </div>
-
-      {/* Legend */}
-      <div className="absolute bottom-6 right-6 z-[400] bg-white rounded-xl shadow-md border border-slate-200 p-3 hidden sm:block">
-        <div className="flex gap-4 text-xs font-medium text-slate-600">
-          <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-rose-500"></div> Critical (12)</span>
-          <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-amber-500"></div> High (8)</span>
-          <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-slate-300"></div> Open (24)</span>
-        </div>
       </div>
     </div>
   );

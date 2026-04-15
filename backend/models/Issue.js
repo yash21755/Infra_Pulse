@@ -6,7 +6,8 @@ const issueSchema = new mongoose.Schema({
   status: { type: String, enum: ['open', 'in_progress', 'resolved', 'closed'], default: 'open' },
   priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
   tags: [String],
-  votes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  votes:     [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // upvoters
+  downvotes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // downvoters
   reporter: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   assignee: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   location: {

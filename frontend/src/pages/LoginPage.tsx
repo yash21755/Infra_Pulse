@@ -36,35 +36,35 @@ export const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-body">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-body">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
         <Link to="/" className="inline-flex items-center gap-3 mb-6">
           <div className="w-12 h-12 bg-brand-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-md">IP</div>
-          <span className="font-display font-bold text-3xl tracking-tight text-slate-900">Infra_Pulse</span>
+          <span className="font-display font-bold text-3xl tracking-tight text-slate-900 dark:text-white">Infra_Pulse</span>
         </Link>
-        <h2 className="text-2xl font-display font-bold text-slate-900">
+        <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white">
           {isRegister ? 'Join the community' : 'Sign in to your account'}
         </h2>
       </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-sm sm:rounded-2xl border border-slate-200 sm:px-10">
+        <div className="bg-white dark:bg-slate-900 py-8 px-4 shadow-sm sm:rounded-2xl border border-slate-200 dark:border-slate-800 sm:px-10">
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
+            <div className="mb-4 p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-sm rounded-lg">
               {error}
             </div>
           )}
           <form className="space-y-6" onSubmit={handleSubmit}>
             {isRegister && (
               <div>
-                <label className="block text-sm font-medium text-slate-700">Full Name</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Full Name</label>
                 <div className="mt-1">
                   <input
                     required
                     type="text"
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg placeholder-slate-400 focus:outline-none focus:ring-brand-500 focus:border-brand-500"
+                    className="appearance-none block w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500"
                     placeholder="Your full name"
                   />
                 </div>
@@ -72,28 +72,28 @@ export const LoginPage = () => {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">College Email address</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">College Email address</label>
               <div className="mt-1">
                 <input
                   required
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg placeholder-slate-400 focus:outline-none focus:ring-brand-500 focus:border-brand-500"
+                  className="appearance-none block w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500"
                   placeholder="student@college.edu"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">Password</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Password</label>
               <div className="mt-1">
                 <input
                   required
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg placeholder-slate-400 focus:outline-none focus:ring-brand-500 focus:border-brand-500"
+                  className="appearance-none block w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500"
                   placeholder="••••••••"
                 />
               </div>
@@ -106,9 +106,9 @@ export const LoginPage = () => {
 
           <div className="mt-6">
             <div className="relative">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200 dark:border-slate-800" /></div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-slate-500">
+                <span className="px-2 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400">
                   {isRegister ? 'Already have an account?' : 'New to Infra_Pulse?'}
                 </span>
               </div>
@@ -122,9 +122,9 @@ export const LoginPage = () => {
         </div>
 
         {isRegister && (
-          <div className="mt-8 bg-brand-50 border border-brand-200 rounded-xl p-4 flex gap-3 text-sm text-brand-800">
-            <Shield className="shrink-0 text-brand-600" size={20} />
-            <p>Your real identity stays completely private. A unique anonymous handle (e.g., <span className="font-mono font-bold">SilentOwl#4821</span>) will be automatically generated for you.</p>
+          <div className="mt-8 bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/20 rounded-xl p-4 flex gap-3 text-sm text-brand-800 dark:text-brand-300">
+            <Shield className="shrink-0 text-brand-600 dark:text-brand-400" size={20} />
+            <p>Your real identity stays completely private. A unique anonymous handle (e.g., <span className="font-mono font-bold text-slate-900 dark:text-white">SilentOwl#4821</span>) will be automatically generated for you.</p>
           </div>
         )}
       </div>

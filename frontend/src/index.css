@@ -6,11 +6,19 @@
   body {
     @apply bg-white text-slate-900 font-body antialiased selection:bg-brand-200 selection:text-brand-900;
   }
-  
+  .dark body {
+    @apply bg-slate-950 text-slate-100;
+  }
   h1, h2, h3, h4, h5, h6 {
     @apply font-display;
   }
+  
+  .dark .leaflet-popup-content-wrapper,
+  .dark .leaflet-popup-tip {
+    @apply bg-slate-900 text-slate-100 border border-slate-700 shadow-xl;
+  }
 }
+
 
 @layer utilities {
   .pb-safe {

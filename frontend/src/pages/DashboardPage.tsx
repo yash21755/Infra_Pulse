@@ -21,8 +21,8 @@ export const DashboardPage = () => {
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-display font-bold text-slate-900">Resolution Dashboard</h1>
-          <p className="text-slate-500 mt-1">Overview of campus infrastructure health.</p>
+          <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">Resolution Dashboard</h1>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">Overview of campus infrastructure health.</p>
         </div>
       </div>
 
@@ -34,13 +34,13 @@ export const DashboardPage = () => {
           { label: 'Avg Resolution', value: '2.4 days', icon: Clock, color: 'text-blue-600', bg: 'bg-blue-100' },
           { label: 'Pending Critical', value: '12', icon: AlertTriangle, color: 'text-rose-600', bg: 'bg-rose-100' },
         ].map((stat, i) => (
-          <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
-            <div className={`p-4 rounded-xl ${stat.bg} ${stat.color}`}>
+          <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
+            <div className={`p-4 rounded-xl ${stat.bg.replace('bg-', 'bg-').replace('100', '100 dark:bg-opacity-10 dark:bg-')} ${stat.color} dark:!text-[${stat.color.replace('text-', '')}]`}>
               <stat.icon size={24} />
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-500 mb-1">{stat.label}</p>
-              <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">{stat.label}</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white">{stat.value}</p>
             </div>
           </div>
         ))}
@@ -48,8 +48,8 @@ export const DashboardPage = () => {
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <h3 className="text-lg font-bold text-slate-900 mb-6">Issues by Category</h3>
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Issues by Category</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -64,15 +64,15 @@ export const DashboardPage = () => {
           </div>
           <div className="flex justify-center gap-4 flex-wrap mt-4">
             {categoryData.map(c => (
-              <div key={c.name} className="flex items-center gap-2 text-sm font-medium text-slate-600">
+              <div key={c.name} className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} /> {c.name}
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <h3 className="text-lg font-bold text-slate-900 mb-6">Reporting vs Resolution Trend</h3>
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Reporting vs Resolution Trend</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData}>
