@@ -1,0 +1,152 @@
+{
+  "_comment": "Campus building registry for Infra_Pulse geospatial pre-filtering.",
+  "_format":  "Each polygon is a list of [latitude, longitude] coordinate pairs forming a closed region.",
+  "_note":    "Replace placeholder coordinates with your actual campus GPS measurements.",
+
+  "buildings": [
+    {
+      "id":      "CC-1",
+      "name":    "Computer Centre Block 1",
+      "type":    "academic",
+      "tags":    ["computer", "lab", "academic"],
+      "polygon": [
+        [25.4401, 81.8701],
+        [25.4405, 81.8701],
+        [25.4405, 81.8707],
+        [25.4401, 81.8707]
+      ]
+    },
+    {
+      "id":      "CC-2",
+      "name":    "Computer Centre Block 2",
+      "type":    "academic",
+      "tags":    ["computer", "lab", "academic"],
+      "polygon": [
+        [25.4406, 81.8701],
+        [25.4410, 81.8701],
+        [25.4410, 81.8707],
+        [25.4406, 81.8707]
+      ]
+    },
+    {
+      "id":      "CC-3",
+      "name":    "Computer Centre Block 3",
+      "type":    "academic",
+      "tags":    ["computer", "lab", "academic"],
+      "polygon": [
+        [25.4411, 81.8701],
+        [25.4415, 81.8701],
+        [25.4415, 81.8707],
+        [25.4411, 81.8707]
+      ]
+    },
+    {
+      "id":      "HOSTEL-1",
+      "name":    "Boys Hostel Block 1",
+      "type":    "hostel",
+      "tags":    ["hostel", "residential"],
+      "polygon": [
+        [25.4390, 81.8720],
+        [25.4396, 81.8720],
+        [25.4396, 81.8728],
+        [25.4390, 81.8728]
+      ]
+    },
+    {
+      "id":      "HOSTEL-2",
+      "name":    "Boys Hostel Block 2",
+      "type":    "hostel",
+      "tags":    ["hostel", "residential"],
+      "polygon": [
+        [25.4397, 81.8720],
+        [25.4403, 81.8720],
+        [25.4403, 81.8728],
+        [25.4397, 81.8728]
+      ]
+    },
+    {
+      "id":      "HOSTEL-GIRLS",
+      "name":    "Girls Hostel",
+      "type":    "hostel",
+      "tags":    ["hostel", "residential", "girls"],
+      "polygon": [
+        [25.4380, 81.8718],
+        [25.4388, 81.8718],
+        [25.4388, 81.8726],
+        [25.4380, 81.8726]
+      ]
+    },
+    {
+      "id":      "MESS-MAIN",
+      "name":    "Main Mess",
+      "type":    "mess",
+      "tags":    ["mess", "food", "canteen"],
+      "polygon": [
+        [25.4385, 81.8710],
+        [25.4390, 81.8710],
+        [25.4390, 81.8718],
+        [25.4385, 81.8718]
+      ]
+    },
+    {
+      "id":      "LIBRARY",
+      "name":    "Central Library",
+      "type":    "academic",
+      "tags":    ["library", "academic", "reading"],
+      "polygon": [
+        [25.4410, 81.8715],
+        [25.4418, 81.8715],
+        [25.4418, 81.8723],
+        [25.4410, 81.8723]
+      ]
+    },
+    {
+      "id":      "ADMIN-BLOCK",
+      "name":    "Administrative Block",
+      "type":    "administrative",
+      "tags":    ["admin", "office"],
+      "polygon": [
+        [25.4420, 81.8700],
+        [25.4427, 81.8700],
+        [25.4427, 81.8709],
+        [25.4420, 81.8709]
+      ]
+    },
+    {
+      "id":      "SPORTS-GROUND",
+      "name":    "Sports Ground",
+      "type":    "sports",
+      "tags":    ["sports", "outdoor", "ground"],
+      "polygon": [
+        [25.4370, 81.8705],
+        [25.4385, 81.8705],
+        [25.4385, 81.8720],
+        [25.4370, 81.8720]
+      ]
+    },
+    {
+      "id":      "SAC",
+      "name":    "Student Activity Centre",
+      "type":    "amenity",
+      "tags":    ["sac", "activity", "amenity"],
+      "polygon": [
+        [25.4398, 81.8708],
+        [25.4405, 81.8708],
+        [25.4405, 81.8715],
+        [25.4398, 81.8715]
+      ]
+    },
+    {
+      "id":      "AMUL",
+      "name":    "Amul Dairy / Canteen Area",
+      "type":    "amenity",
+      "tags":    ["canteen", "food", "amul"],
+      "polygon": [
+        [25.4393, 81.8709],
+        [25.4398, 81.8709],
+        [25.4398, 81.8715],
+        [25.4393, 81.8715]
+      ]
+    }
+  ]
+}

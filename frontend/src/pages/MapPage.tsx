@@ -24,7 +24,7 @@ export const MapPage = () => {
       <div className="absolute top-4 left-4 z-[400]">
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="bg-white dark:bg-slate-900 px-4 py-2.5 rounded-xl shadow-md border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 font-medium text-sm"
+          className="bg-white dark:bg-slate-900 ml-8 px-4 py-2.5 rounded-xl shadow-md border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 font-medium text-sm"
         >
           <Filter size={16} />
           <span>Filters</span>
