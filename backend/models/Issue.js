@@ -15,6 +15,7 @@ const issueSchema = new mongoose.Schema({
     lng: { type: Number },
     label: { type: String }
   },
+  publicId: { type: String, unique: true, sparse: true },
   imageUrl: { type: String },
   buildingId: { type: String }, // From Geospatial API
   category: { type: String, default: 'General' }, // For Priority API diversity

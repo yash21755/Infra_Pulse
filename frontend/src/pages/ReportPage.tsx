@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Camera, MapPin, CheckCircle, ArrowRight, ArrowLeft, X } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
@@ -35,6 +35,7 @@ function LocationMarker({ position, setPosition }: { position: L.LatLngExpressio
 export const ReportPage = () => {
   const [step, setStep] = useState(1);
   const [submitError, setSubmitError] = useState('');
+  const [duplicateInfo, setDuplicateInfo] = useState<{message: string, matchId: string} | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
@@ -70,6 +71,7 @@ export const ReportPage = () => {
 
   const submitReport = async () => {
     setSubmitError('');
+    setDuplicateInfo(null);
     setIsSubmitting(true);
     try {
       const token = localStorage.getItem('infra_pulse_token');
@@ -96,8 +98,13 @@ export const ReportPage = () => {
       });
       navigate('/feed');
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Failed to submit report. Please try again.';
-      setSubmitError(msg);
+      const data = err?.response?.data;
+      if (err?.response?.status === 409 && data?.matchId) {
+        setDuplicateInfo({ message: data.message, matchId: data.matchId });
+      } else {
+        const msg = data?.message || 'Failed to submit report. Please try again.';
+        setSubmitError(msg);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -214,6 +221,19 @@ export const ReportPage = () => {
             {submitError && (
               <div className="mt-4 p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-sm rounded-lg">
                 {submitError}
+              </div>
+            )}
+            {duplicateInfo && (
+              <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-400 text-sm rounded-lg flex flex-col gap-2">
+                <div className="flex items-start gap-2">
+                  <div className="mt-0.5"><CheckCircle size={16} /></div>
+                  <span className="font-medium">{duplicateInfo.message}</span>
+                </div>
+                <div className="pl-6">
+                  <Link to={`/issues/${duplicateInfo.matchId}`} className="text-brand-600 dark:text-brand-400 font-semibold hover:underline flex items-center gap-1">
+                    View the existing issue <ArrowRight size={14} />
+                  </Link>
+                </div>
               </div>
             )}
           </div>

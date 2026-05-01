@@ -1,6 +1,7 @@
 const Issue = require('../models/Issue');
 const Notification = require('../models/Notification');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const GEOSPATIAL_API_URL = process.env.GEOSPATIAL_API_URL || 'http://127.0.0.1:8001';
 const REDUNDANCY_API_URL = process.env.REDUNDANCY_API_URL || 'http://127.0.0.1:8002';
@@ -53,6 +54,7 @@ exports.createIssue = async (req, res, next) => {
     
     issueData.category = category;
     issueData.subCommunity = subCommunity;
+    issueData.publicId = 'ISS-' + crypto.randomBytes(3).toString('hex').toUpperCase();
 
     // 2. Redundancy check (only if buildingId is known)
     if (buildingId) {
@@ -77,9 +79,22 @@ exports.createIssue = async (req, res, next) => {
           if (redData.is_redundant) {
             // Duplicate detected!
             if (req.file) fs.unlinkSync(req.file.path);
+            
+            let matchPublicId = redData.top_match_id;
+            if (redData.top_match_id) {
+               const matchedIssue = await Issue.findById(redData.top_match_id);
+               if (matchedIssue && matchedIssue.publicId) {
+                  matchPublicId = matchedIssue.publicId;
+               } else if (redData.top_match_id.length > 6) {
+                  matchPublicId = 'ISS-' + redData.top_match_id.substring(redData.top_match_id.length - 6).toUpperCase();
+               }
+            }
+
             return res.status(409).json({
-              message: 'Duplicate issue detected.',
-              redundancyData: redData
+              message: `Duplicate detected! Your issue is similar to an existing one (ID: ${matchPublicId}).`,
+              redundancyData: redData,
+              matchPublicId: matchPublicId,
+              matchId: redData.top_match_id
             });
           }
         }

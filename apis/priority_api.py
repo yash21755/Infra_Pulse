@@ -55,7 +55,7 @@ import pickle
 import time
 from collections import defaultdict, deque
 from pathlib import Path
-from threading import Lock
+import threading
 from typing import Any, Deque, Dict, List, Optional
 
 import uvicorn
@@ -474,6 +474,51 @@ velocity_tracker = VelocityTracker(window=VELOCITY_WINDOW_SECONDS)
 priority_store   = PriorityStore(persist_path=PRIORITY_STORE_PATH)
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Background Priority Setter (Runs every 10 seconds)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class BackgroundRanker:
+    """
+    Periodically refreshes the global ranking in the background.
+    This ensures the feed is always ready and the complex re-ranking 
+    logic (Diversity Re-ranking) doesn't slow down user requests.
+    """
+    def __init__(self, store: PriorityStore, tracker: VelocityTracker):
+        self.store = store
+        self.tracker = tracker
+        self.cache: List[dict] = []
+        self.lock = threading.Lock()
+        self._start_timer()
+
+    def _start_timer(self):
+        thread = threading.Thread(target=self._run, daemon=True)
+        thread.start()
+
+    def _run(self):
+        logger.info("Background Priority Setter started (10s interval).")
+        while True:
+            try:
+                # Refresh the global top 100 ranking
+                new_ranking = self.store.ranked_issues(
+                    velocity_tracker=self.tracker,
+                    limit=100
+                )
+                with self.lock:
+                    self.cache = new_ranking
+                logger.debug("Priority cache refreshed.")
+            except Exception as e:
+                logger.error(f"Background Priority Setter error: {e}")
+            
+            time.sleep(10)
+
+    def get_cached_ranking(self, limit: int = 20) -> List[dict]:
+        with self.lock:
+            return self.cache[:limit]
+
+# Singleton background ranker
+background_ranker = BackgroundRanker(priority_store, velocity_tracker)
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # FastAPI App
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -672,16 +717,25 @@ async def front_page(
     limit:            int            = Query(20,    ge=1, le=100),
 ):
     """
-    Return the ranked front-page issue feed with diversity re-ranking applied.
-
-    Algorithm (executed on each GET call, scores pre-computed on vote events)
-    -------------------------------------------------------------------------
-    1. Filter by building_id / category if specified
-    2. Compute effective_score = base_score + velocity_boost for each issue
-    3. Sort descending
-    4. Apply Anti-Stagnation diversity re-ranking
-    5. Return top `limit` results
+    Return the ranked front-page issue feed.
+    Uses background-cached ranking for global feeds, 
+    or computes on-the-fly for filtered requests.
     """
+    # Use cached ranking for global requests (no filters) to scale better
+    if not building_id and not category and not include_resolved:
+        ranked = background_ranker.get_cached_ranking(limit=limit)
+        if ranked:
+            return {
+                "count":       len(ranked),
+                "from_cache":  True,
+                "issues":      ranked,
+                "algorithm": {
+                    "decay_constant":    DECAY_CONSTANT,
+                    "velocity_window_s": VELOCITY_WINDOW_SECONDS,
+                },
+            }
+
+    # Compute on-the-fly for filtered requests
     ranked = priority_store.ranked_issues(
         velocity_tracker  = velocity_tracker,
         building_id       = building_id,
