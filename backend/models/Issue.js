@@ -16,6 +16,9 @@ const issueSchema = new mongoose.Schema({
     label: { type: String }
   },
   imageUrl: { type: String },
+  buildingId: { type: String }, // From Geospatial API
+  category: { type: String, default: 'General' }, // For Priority API diversity
+  subCommunity: { type: String, default: 'Campus' }, // For Priority API diversity
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
