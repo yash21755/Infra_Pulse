@@ -67,15 +67,19 @@ logger = logging.getLogger("geospatial_api")
 
 class BuildingRegistry:
     """
-    Manages campus building polygons.
-    
-    Shapely's `Polygon.contains()` uses exact topological intersection —
-    so two buildings that share a wall are still treated as distinct entities.
-    This is critical for multi-storey structures and adjacent blocks.
+    Manages campus building polygons loaded from OSM data.
+
+    Resolution cascade:
+      1. Exact polygon containment  — pin is inside a known building
+      2. Nearest-boundary fallback  — pin is just outside a polygon (< threshold)
+      3. 50-metre radius zone       — open-area pin; snapped to a ~50 m grid cell
+                                      so nearby open-area issues still group together
     """
 
+    # ~50 metres in degrees (latitude-safe approximation at 25°N)
+    ZONE_CELL_DEG = 0.00045   # ≈ 50 m
+
     def __init__(self, config_path: Optional[str] = None) -> None:
-        # building_id → { id, name, type, tags, polygon (Shapely), centroid }
         self._store: Dict[str, dict] = {}
         self._load(config_path or CAMPUS_BUILDINGS_CONFIG)
 
@@ -116,20 +120,49 @@ class BuildingRegistry:
         logger.info(f"Loaded {len(self._store)} campus buildings from '{path}'")
 
     # ── Core resolution ────────────────────────────────────────────────────────
-    def resolve(self, lat: float, lon: float) -> Optional[dict]:
+    def resolve(self, lat: float, lon: float) -> dict:
         """
-        Stage 1: Exact polygon test.
+        Returns a dict with building_id, building_name, building_type,
+        resolution_method, and approximate_match.
+
+        Stage 1: Exact polygon containment.
         Stage 2: Nearest-boundary fallback (within threshold).
+        Stage 3: 50-metre zone bucket for open-area pins.
         """
         point = Point(lon, lat)     # Shapely: (x=lon, y=lat)
 
-        # Exact containment — O(B) over registered buildings B
+        # Stage 1 — Exact containment
         for building in self._store.values():
             if building["polygon"].contains(point):
                 return self._public(building, method="gps_polygon", approx=False)
 
-        # Boundary distance fallback
-        return self._nearest_within_threshold(point)
+        # Stage 2 — Boundary proximity fallback
+        nearest = self._nearest_within_threshold(point)
+        if nearest:
+            return nearest
+
+        # Stage 3 — 50 m zone bucket for open areas
+        zone_id   = self._zone_id(lat, lon)
+        zone_name = f"Open Area Zone {zone_id}"
+        logger.info(f"[zone_bucket] ({lat},{lon}) → {zone_id}")
+        return {
+            "building_id":       zone_id,
+            "building_name":     zone_name,
+            "building_type":     "outdoor_zone",
+            "tags":              ["outdoor", "open_area"],
+            "centroid":          (round(lat, 5), round(lon, 5)),
+            "resolution_method": "zone_bucket",
+            "approximate_match": True,
+        }
+
+    def _zone_id(self, lat: float, lon: float) -> str:
+        """
+        Snap coordinates to a ~50 m grid cell and return a stable string ID.
+        Two pins within ~50 m of each other will hash to the same cell.
+        """
+        cell_lat = round(round(lat / self.ZONE_CELL_DEG) * self.ZONE_CELL_DEG, 6)
+        cell_lon = round(round(lon / self.ZONE_CELL_DEG) * self.ZONE_CELL_DEG, 6)
+        return f"ZONE_{cell_lat}_{cell_lon}"
 
     def _nearest_within_threshold(self, point: Point) -> Optional[dict]:
         """Find the nearest building boundary within the configured threshold."""
@@ -180,6 +213,7 @@ class BuildingRegistry:
             "resolution_method": method,
             "approximate_match": approx,
         }
+
 
 
 # ── Module-level singleton ─────────────────────────────────────────────────────
@@ -291,40 +325,27 @@ async def resolve_location(req: LocationRequest):
             message=f"Resolved to {b['building_name']} via explicit user tag.",
         )
 
-    # ── Priority 2 & 3: GPS-based resolution ──────────────────────────────────
+    # ── Priority 2, 3 & 4: GPS-based resolution ──────────────────────────────
+    # resolve() always returns a result — building polygon, nearest boundary,
+    # or 50 m zone bucket for open-area pins. Never returns None.
     result = registry.resolve(req.latitude, req.longitude)
 
-    if result:
-        logger.info(
-            f"[{result['resolution_method']}] ({req.latitude},{req.longitude}) "
-            f"→ {result['building_id']}"
-        )
-        return LocationResponse(
-            success=True,
-            building_id=result["building_id"],
-            building_name=result["building_name"],
-            building_type=result["building_type"],
-            tags=result["tags"],
-            resolution_method=result["resolution_method"],
-            approximate_match=result["approximate_match"],
-            message=(
-                f"Resolved to {result['building_name']}."
-                + (" (approximate — point was near but outside polygon)" if result["approximate_match"] else "")
-            ),
-        )
-
-    # ── Priority 4: Unresolved ────────────────────────────────────────────────
-    logger.warning(f"Unresolved location ({req.latitude}, {req.longitude})")
+    logger.info(
+        f"[{result['resolution_method']}] ({req.latitude},{req.longitude}) "
+        f"→ {result['building_id']}"
+    )
     return LocationResponse(
-        success=False,
-        building_id=None,
-        building_name=None,
-        building_type=None,
-        tags=None,
-        resolution_method="unresolved",
-        approximate_match=False,
-        message="This location does not match any registered campus structure. "
-                "Please select a building manually using user_tag_building_id.",
+        success=True,
+        building_id=result["building_id"],
+        building_name=result["building_name"],
+        building_type=result["building_type"],
+        tags=result["tags"],
+        resolution_method=result["resolution_method"],
+        approximate_match=result["approximate_match"],
+        message=(
+            f"Resolved to {result['building_name']}."
+            + (" (approximate)" if result["approximate_match"] else "")
+        ),
     )
 
 

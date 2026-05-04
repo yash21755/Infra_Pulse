@@ -22,10 +22,11 @@ exports.createIssue = async (req, res, next) => {
     }
 
     let buildingId = null;
-    let category = issueData.category || 'General';
+    // Preserve the user-selected category; fall back to 'General' only if not provided
+    const category = (issueData.category && issueData.category.trim()) ? issueData.category.trim() : 'General';
     let subCommunity = 'Campus';
 
-    // 1. Geospatial check
+    // 1. Geospatial check — only used to set buildingId/subCommunity, never overwrites category
     if (issueData.location && issueData.location.lat && issueData.location.lng) {
       try {
         const geoRes = await fetch(`${GEOSPATIAL_API_URL}/resolve-location`, {
@@ -53,75 +54,75 @@ exports.createIssue = async (req, res, next) => {
     issueData.subCommunity = subCommunity;
     issueData.publicId = 'ISS-' + crypto.randomBytes(3).toString('hex').toUpperCase();
 
-    // 2. Redundancy check (only if buildingId is known)
-    if (buildingId) {
-      try {
-        const formData = new FormData();
-        formData.append('building_id', buildingId);
-        formData.append('text', issueData.description || issueData.title);
-        
-        if (req.file) {
-          const fileBuffer = fs.readFileSync(req.file.path);
-          const blob = new Blob([fileBuffer], { type: req.file.mimetype });
-          formData.append('image', blob, req.file.originalname);
-        }
-
-        const redRes = await fetch(`${REDUNDANCY_API_URL}/check-redundancy`, {
-          method: 'POST',
-          body: formData
-        });
-        
-        if (redRes.ok) {
-          const redData = await redRes.json();
-          if (redData.is_redundant) {
-            // Duplicate detected!
-            if (req.file) fs.unlinkSync(req.file.path);
-            
-            let matchPublicId = redData.top_match_id;
-            if (redData.top_match_id) {
-               const matchedIssue = await Issue.findById(redData.top_match_id);
-               if (matchedIssue && matchedIssue.publicId) {
-                  matchPublicId = matchedIssue.publicId;
-               } else if (redData.top_match_id.length > 6) {
-                  matchPublicId = 'ISS-' + redData.top_match_id.substring(redData.top_match_id.length - 6).toUpperCase();
-               }
-            }
-
-            return res.status(409).json({
-              message: `Duplicate detected! Your issue is similar to an existing one (ID: ${matchPublicId}).`,
-              redundancyData: redData,
-              matchPublicId: matchPublicId,
-              matchId: redData.top_match_id
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Redundancy API error:', err.message);
+    // 2. Redundancy check — campus-wide search (search_all=true) so duplicates
+    //    are caught even when pins land in different but nearby building polygons
+    const redundancyBuildingId = buildingId || 'CAMPUS_GLOBAL';
+    try {
+      const formData = new FormData();
+      formData.append('building_id', redundancyBuildingId);
+      formData.append('text', issueData.description || issueData.title);
+      formData.append('search_all', 'true');  // campus-wide duplicate check
+      if (req.file) {
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const blob = new Blob([fileBuffer], { type: req.file.mimetype });
+        formData.append('image', blob, req.file.originalname);
       }
+
+      const redRes = await fetch(`${REDUNDANCY_API_URL}/check-redundancy`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (redRes.ok) {
+        const redData = await redRes.json();
+        if (redData.is_redundant) {
+          // Duplicate detected — reject before saving and clean up
+          if (req.file) {
+            try { fs.unlinkSync(req.file.path); } catch (_) {}
+          }
+
+          let matchPublicId = redData.top_match_id;
+          if (redData.top_match_id) {
+            const matchedIssue = await Issue.findById(redData.top_match_id);
+            if (matchedIssue && matchedIssue.publicId) {
+              matchPublicId = matchedIssue.publicId;
+            } else if (redData.top_match_id.length > 6) {
+              matchPublicId = 'ISS-' + redData.top_match_id.substring(redData.top_match_id.length - 6).toUpperCase();
+            }
+          }
+
+          return res.status(409).json({
+            message: `Duplicate detected! Your issue is similar to an existing one (ID: ${matchPublicId}).`,
+            redundancyData: redData,
+            matchPublicId: matchPublicId,
+            matchId: redData.top_match_id
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Redundancy API error:', err.message);
     }
 
     // Save to Mongo
     const issue = await Issue.create(issueData);
 
-    // 3. Register with Redundancy API
-    if (buildingId) {
-      try {
-        const regFormData = new FormData();
-        regFormData.append('issue_id', issue._id.toString());
-        regFormData.append('building_id', buildingId);
-        regFormData.append('text', issue.description || issue.title);
-        if (req.file) {
-          const fileBuffer = fs.readFileSync(req.file.path);
-          const blob = new Blob([fileBuffer], { type: req.file.mimetype });
-          regFormData.append('image', blob, req.file.originalname);
-        }
-        await fetch(`${REDUNDANCY_API_URL}/register-issue`, {
-          method: 'POST',
-          body: regFormData
-        });
-      } catch (err) {
-        console.error('Redundancy Registration error:', err.message);
+    // 3. Register with Redundancy API in the specific building bucket
+    try {
+      const regFormData = new FormData();
+      regFormData.append('issue_id', issue._id.toString());
+      regFormData.append('building_id', redundancyBuildingId);
+      regFormData.append('text', issue.description || issue.title);
+      if (req.file) {
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const blob = new Blob([fileBuffer], { type: req.file.mimetype });
+        regFormData.append('image', blob, req.file.originalname);
       }
+      await fetch(`${REDUNDANCY_API_URL}/register-issue`, {
+        method: 'POST',
+        body: regFormData
+      });
+    } catch (err) {
+      console.error('Redundancy Registration error:', err.message);
     }
 
     // 4. Register with Priority API

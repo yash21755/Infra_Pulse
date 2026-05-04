@@ -16,8 +16,17 @@ export const LoginPage = () => {
   const auth = useContext(AuthContext);
   const navigate = useNavigate();
 
+  const ALLOWED_DOMAIN = '@iiita.ac.in';
+
+  const isValidDomain = (e: string) =>
+    e === '' || e.toLowerCase().endsWith(ALLOWED_DOMAIN);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email.toLowerCase().endsWith(ALLOWED_DOMAIN)) {
+      setError(`Only ${ALLOWED_DOMAIN} email addresses are permitted.`);
+      return;
+    }
     setIsLoading(true);
     setError('');
     try {
@@ -79,10 +88,20 @@ export const LoginPage = () => {
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500"
-                  placeholder="student@college.edu"
+                  className={`appearance-none block w-full px-3 py-2 bg-white dark:bg-slate-950 border rounded-lg placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500 transition-colors ${
+                    email && !isValidDomain(email)
+                      ? 'border-rose-400 dark:border-rose-500'
+                      : 'border-slate-300 dark:border-slate-700'
+                  }`}
+                  placeholder="yourname@iiita.ac.in"
                 />
               </div>
+              {/* Inline domain warning */}
+              {email && !isValidDomain(email) && (
+                <p className="mt-1.5 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                  <span>⚠</span> Only <span className="font-mono font-bold">@iiita.ac.in</span> addresses are allowed.
+                </p>
+              )}
             </div>
 
             <div>
@@ -121,8 +140,16 @@ export const LoginPage = () => {
           </div>
         </div>
 
+        {/* Domain restriction notice — always visible */}
+        <div className="mt-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4 flex gap-3 text-sm text-amber-800 dark:text-amber-300">
+          <Shield className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" size={18} />
+          <p>
+            Access is restricted to <span className="font-mono font-bold text-slate-900 dark:text-white">@iiita.ac.in</span> email addresses only.
+          </p>
+        </div>
+
         {isRegister && (
-          <div className="mt-8 bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/20 rounded-xl p-4 flex gap-3 text-sm text-brand-800 dark:text-brand-300">
+          <div className="mt-3 bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/20 rounded-xl p-4 flex gap-3 text-sm text-brand-800 dark:text-brand-300">
             <Shield className="shrink-0 text-brand-600 dark:text-brand-400" size={20} />
             <p>Your real identity stays completely private. A unique anonymous handle (e.g., <span className="font-mono font-bold text-slate-900 dark:text-white">SilentOwl#4821</span>) will be automatically generated for you.</p>
           </div>

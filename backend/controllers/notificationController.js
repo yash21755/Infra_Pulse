@@ -34,3 +34,12 @@ exports.markAllAsRead = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.clearAll = async (req, res, next) => {
+  try {
+    const result = await Notification.deleteMany({ user: req.user.id });
+    res.json({ message: `Cleared ${result.deletedCount} notification(s).` });
+  } catch (err) {
+    next(err);
+  }
+};

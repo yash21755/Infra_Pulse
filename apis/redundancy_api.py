@@ -302,24 +302,18 @@ class VectorStore:
         return True
 
     # ── Cosine search ──────────────────────────────────────────────────────────
-    def search_cosine(
+    def _score_candidates(
         self,
         query_fused: np.ndarray,
         query_vis:   np.ndarray,
         query_txt:   np.ndarray,
-        building_id: str,
-        top_k:       int = 5,
+        candidates:  List[str],
     ) -> List[Tuple[str, float]]:
-        """
-        Weighted cosine similarity fallback (no trained MLP).
-        score = α·sim(vis) + β·sim(txt)  then combined with fused cosine as tie-break.
-        """
-        candidates = self.building_index.get(building_id, [])
-        if not candidates:
-            return []
-
+        """Score a list of candidate issue IDs against the query."""
         scores: List[Tuple[str, float]] = []
         for cid in candidates:
+            if cid not in self.embeddings:
+                continue
             vis_sim   = float(cosine_similarity([query_vis],  [self.vis_embeddings[cid]])[0][0])
             txt_sim   = float(cosine_similarity([query_txt],  [self.txt_embeddings[cid]])[0][0])
             fused_sim = float(cosine_similarity([query_fused],[self.embeddings[cid]])[0][0])
@@ -332,7 +326,34 @@ class VectorStore:
             scores.append((cid, round(combined, 6)))
 
         scores.sort(key=lambda x: x[1], reverse=True)
-        return scores[:top_k]
+        return scores
+
+    def search_cosine(
+        self,
+        query_fused: np.ndarray,
+        query_vis:   np.ndarray,
+        query_txt:   np.ndarray,
+        building_id: str,
+        top_k:       int = 5,
+    ) -> List[Tuple[str, float]]:
+        """Search within a single building bucket."""
+        candidates = self.building_index.get(building_id, [])
+        if not candidates:
+            return []
+        return self._score_candidates(query_fused, query_vis, query_txt, candidates)[:top_k]
+
+    def search_all_cosine(
+        self,
+        query_fused: np.ndarray,
+        query_vis:   np.ndarray,
+        query_txt:   np.ndarray,
+        top_k:       int = 5,
+    ) -> List[Tuple[str, float]]:
+        """Search across ALL buildings — campus-wide duplicate detection."""
+        all_candidates = list(self.embeddings.keys())
+        if not all_candidates:
+            return []
+        return self._score_candidates(query_fused, query_vis, query_txt, all_candidates)[:top_k]
 
     def search_mlp(
         self,
@@ -458,8 +479,11 @@ def _find_matches(
     txt:         np.ndarray,
     building_id: str,
     top_k:       int = 5,
+    search_all:  bool = False,
 ) -> List[Tuple[str, float]]:
     """Route to MLP or cosine search depending on available weights."""
+    if search_all:
+        return vector_store.search_all_cosine(fused, vis, txt, top_k)
     if coupling_network:
         return vector_store.search_mlp(fused, building_id, coupling_network, top_k)
     return vector_store.search_cosine(fused, vis, txt, building_id, top_k)
@@ -513,6 +537,7 @@ async def check_redundancy(
     text:        str         = Form(..., description="Issue text description"),
     image:       Optional[UploadFile] = File(None, description="Issue photo (optional)"),
     top_k:       int         = Form(5, ge=1, le=20, description="Max similar issues to return"),
+    search_all:  bool        = Form(False, description="If true, search ALL buildings instead of just one bucket"),
 ):
     """
     Check whether an incoming issue submission is a duplicate of an existing one.
@@ -525,12 +550,13 @@ async def check_redundancy(
     4. CouplingNetwork(Z) → R  (or weighted cosine fallback)
     5. R > 0.85  →  REDUNDANT
 
-    Only issues registered under the same `building_id` are compared,
-    achieving O(K) complexity  where K ≪ N.
+    When search_all=false (default), only issues in the same building_id bucket
+    are compared (O(K) where K ≪ N). When search_all=true, compares against
+    the entire campus vector store.
     """
     pil_image               = await _parse_image(image)
     fused, vis, txt         = _compute_embeddings(text, pil_image)
-    matches                 = _find_matches(fused, vis, txt, building_id, top_k)
+    matches                 = _find_matches(fused, vis, txt, building_id, top_k, search_all=search_all)
 
     top_score   = matches[0][1] if matches else 0.0
     is_redundant = top_score >= REDUNDANCY_THRESHOLD
@@ -545,6 +571,7 @@ async def check_redundancy(
         for mid, score in matches
     ]
 
+    scope = "campus-wide" if search_all else f"building={building_id}"
     msg = (
         f"REDUNDANT: Similarity {top_score:.3f} ≥ threshold {REDUNDANCY_THRESHOLD}. "
         f"Matches existing issue '{matches[0][0]}'."
@@ -553,7 +580,7 @@ async def check_redundancy(
     )
 
     logger.info(
-        f"[check] building={building_id} | score={top_score:.4f} | "
+        f"[check] {scope} | score={top_score:.4f} | "
         f"redundant={is_redundant} | mode={mode}"
     )
 

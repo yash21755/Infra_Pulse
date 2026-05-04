@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, MessageSquare, ChevronUp, Bell } from 'lucide-react';
+import { CheckCircle2, MessageSquare, ChevronUp, Bell, Trash2 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import axios from 'axios';
 
@@ -13,6 +13,7 @@ interface NotificationProps {
 
 export const NotificationsPage = () => {
   const [notifications, setNotifications] = useState<NotificationProps[]>([]);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
     fetchNotifications();
@@ -46,13 +47,52 @@ export const NotificationsPage = () => {
     }
   };
 
+  const clearAllNotifications = async () => {
+    try {
+      await axios.delete('http://localhost:5000/api/notifications/all', { withCredentials: true });
+      setNotifications([]);
+      setConfirmClear(false);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto py-8 px-4 sm:px-6">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white flex items-center gap-3">
           <Bell className="text-brand-600" /> Notifications
         </h1>
-        <Button variant="ghost" size="sm" onClick={markAllAsRead}>Mark all as read</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={markAllAsRead}>Mark all as read</Button>
+          {!confirmClear ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmClear(true)}
+              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/10"
+            >
+              <Trash2 size={15} className="mr-1.5" />
+              Clear all
+            </Button>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 rounded-lg px-3 py-1.5 animate-in fade-in">
+              <span className="text-xs font-medium text-rose-700 dark:text-rose-300">Delete all?</span>
+              <button
+                onClick={clearAllNotifications}
+                className="text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded px-2 py-0.5 transition-colors"
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => setConfirmClear(false)}
+                className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
