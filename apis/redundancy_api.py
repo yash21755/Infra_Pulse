@@ -179,6 +179,8 @@ class EmbeddingEngine:
         """Extract a 512-dim L2-normalised visual embedding."""
         inputs  = self.processor(images=image, return_tensors="pt").to(self.device)
         feats   = self.model.get_image_features(**inputs)
+        if not isinstance(feats, torch.Tensor):
+            feats = getattr(feats, 'image_embeds', getattr(feats, 'pooler_output', feats[0]))
         feats   = feats / feats.norm(dim=-1, keepdim=True)   # L2 normalise
         return feats.squeeze().cpu().numpy().astype(np.float32)
 
@@ -190,6 +192,8 @@ class EmbeddingEngine:
             text=[text[:200]], return_tensors="pt", padding=True, truncation=True
         ).to(self.device)
         feats   = self.model.get_text_features(**inputs)
+        if not isinstance(feats, torch.Tensor):
+            feats = getattr(feats, 'text_embeds', getattr(feats, 'pooler_output', feats[0]))
         feats   = feats / feats.norm(dim=-1, keepdim=True)
         return feats.squeeze().cpu().numpy().astype(np.float32)
 

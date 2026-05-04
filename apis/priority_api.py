@@ -56,6 +56,7 @@ import time
 from collections import defaultdict, deque
 from pathlib import Path
 import threading
+from threading import Lock
 from typing import Any, Deque, Dict, List, Optional
 
 import uvicorn

@@ -2,6 +2,7 @@ import React from 'react';
 import type { Issue } from '../types';
 import { MapPin, Clock, ChevronUp, ChevronDown, ImageIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { CATEGORY_THEME } from '../pages/FeedPage';
 
 interface IssueCardProps {
   issue: Issue;
@@ -118,11 +119,15 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, rank, onAction }) =
                 <Clock size={12} />
                 {timeAgo(issue.reportedAt)}
               </div>
-              {issue.category && (
-                <span className="px-2 py-0.5 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-full text-xs font-semibold">
-                  {issue.category}
-                </span>
-              )}
+              {issue.category && (() => {
+                const theme = CATEGORY_THEME[issue.category];
+                return (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${theme?.chip ?? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${theme?.dot ?? 'bg-slate-400'}`} />
+                    {issue.category}
+                  </span>
+                );
+              })()}
             </div>
           </div>
         </div>

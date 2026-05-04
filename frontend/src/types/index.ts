@@ -1,19 +1,20 @@
 export type IssueStatus = 'open' | 'in_progress' | 'resolved';
-export type IssuePriority = 'critical' | 'high' | 'medium' | 'low';
+
 export type UserRole = 'student' | 'faculty' | 'authority';
 export type UpdateTag = 'work_in_progress' | 'finished';
 
 export type IssueCategory =
-  | 'Sanitation'
   | 'Electrical'
+  | 'Sanitation'
   | 'Plumbing'
-  | 'Furniture'
-  | 'Classroom'
-  | 'SportsGround'
-  | 'Canteen'
-  | 'IT_Infrastructure'
-  | 'Safety_Hazard'
-  | 'Landscaping';
+  | 'HVAC'
+  | 'Structural'
+  | 'IT / Network'
+  | 'Landscaping / Outdoors'
+  | 'Elevator / Escalator'
+  | 'Safety / Security'
+  | 'Furniture / Equipment'
+  | 'General';
 
 export interface GeoLocation {
   lat: number;
@@ -49,7 +50,6 @@ export interface Issue {
   category: IssueCategory;
   tags: string[];
   status: IssueStatus;
-  priority: IssuePriority;
   upvotes: number;
   downvotes: number;
   userVote: 'up' | 'down' | null;

@@ -138,7 +138,17 @@ export const ReportPage = () => {
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category</label>
                 <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-3 bg-white dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none">
-                  <option>Electrical</option><option>Sanitation</option><option>Plumbing</option>
+                  <option value="Electrical">Electrical</option>
+                  <option value="Sanitation">Sanitation</option>
+                  <option value="Plumbing">Plumbing</option>
+                  <option value="HVAC">HVAC</option>
+                  <option value="Structural">Structural</option>
+                  <option value="IT / Network">IT / Network</option>
+                  <option value="Landscaping / Outdoors">Landscaping / Outdoors</option>
+                  <option value="Elevator / Escalator">Elevator / Escalator</option>
+                  <option value="Safety / Security">Safety / Security</option>
+                  <option value="Furniture / Equipment">Furniture / Equipment</option>
+                  <option value="General">General</option>
                 </select>
               </div>
               <div>

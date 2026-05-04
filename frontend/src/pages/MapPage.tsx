@@ -2,23 +2,14 @@ import React, { useState } from 'react';
 import { CampusMap } from '../components/map/CampusMap';
 import { Filter, X } from 'lucide-react';
 
-const PRIORITIES = ['Critical', 'High', 'Medium', 'Low'];
-
 export const MapPage = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState('All');
-  const [priorityFilters, setPriorityFilters] = useState<string[]>(PRIORITIES);
-
-  const togglePriority = (p: string) => {
-    setPriorityFilters(prev =>
-      prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
-    );
-  };
 
   return (
     <div className="relative w-full h-[calc(100vh-64px)] md:h-full">
       {/* Map */}
-      <CampusMap statusFilter={statusFilter} priorityFilters={priorityFilters} />
+      <CampusMap statusFilter={statusFilter} />
 
       {/* Floating Filter Panel */}
       <div className="absolute top-4 left-4 z-[400]">
@@ -28,7 +19,7 @@ export const MapPage = () => {
         >
           <Filter size={16} />
           <span>Filters</span>
-          {(statusFilter !== 'All' || priorityFilters.length < PRIORITIES.length) && (
+          {(statusFilter !== 'All') && (
             <span className="w-2 h-2 rounded-full bg-brand-500 ml-1" />
           )}
         </button>
@@ -58,23 +49,8 @@ export const MapPage = () => {
               ))}
             </div>
 
-            <h4 className="font-semibold text-slate-700 dark:text-slate-300 mb-2 text-xs uppercase tracking-wider">Priority</h4>
-            <div className="space-y-1.5">
-              {PRIORITIES.map(prio => (
-                <label key={prio} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="text-brand-600 rounded focus:ring-brand-500"
-                    checked={priorityFilters.includes(prio)}
-                    onChange={() => togglePriority(prio)}
-                  />
-                  <span className="text-sm text-slate-700 dark:text-slate-300">{prio}</span>
-                </label>
-              ))}
-            </div>
-
             <button
-              onClick={() => { setStatusFilter('All'); setPriorityFilters(PRIORITIES); }}
+              onClick={() => { setStatusFilter('All'); }}
               className="mt-4 w-full text-xs text-slate-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors text-center"
             >
               Reset filters

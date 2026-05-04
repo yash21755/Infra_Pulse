@@ -9,6 +9,7 @@ import { Button } from '../components/ui/Button';
 import { AuthContext } from '../context/AuthContext';
 import type { Issue, AuthorityUpdate } from '../types';
 import axios from 'axios';
+import { CATEGORY_THEME } from './FeedPage';
 
 /* ─────────────────────────────────────────────── helpers ── */
 
@@ -50,7 +51,6 @@ function normalizeIssue(raw: any, currentUserId?: string): Issue & { reporterHan
     category: raw.category ?? 'Electrical',
     tags: raw.tags ?? [],
     status: raw.status ?? 'open',
-    priority: raw.priority ?? 'medium',
     upvotes:   upvoterIds.length,
     downvotes: downvoterIds.length,
     userVote,
@@ -90,12 +90,6 @@ const STATUS_CFG = {
   resolved:    { label: 'Resolved',    badge: 'bg-emerald-100 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
 };
 
-const PRIORITY_CFG: Record<string, { badge: string }> = {
-  critical: { badge: 'bg-rose-100 text-rose-700 border-rose-200' },
-  high:     { badge: 'bg-orange-100 text-orange-700 border-orange-200' },
-  medium:   { badge: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  low:      { badge: 'bg-slate-100 text-slate-600 border-slate-200' },
-};
 
 const TAG_CFG = {
   work_in_progress: {
@@ -317,7 +311,6 @@ export const IssueDetailPage = () => {
   );
 
   const sc    = STATUS_CFG[issue.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.open;
-  const pc    = PRIORITY_CFG[issue.priority] ?? PRIORITY_CFG.medium;
   const timeline = buildTimeline(issue, updates);
 
   /* ══════════════════════════════════════════════════════════════ */
@@ -346,10 +339,8 @@ export const IssueDetailPage = () => {
                   <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
                   {sc.label}
                 </span>
-                <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${pc.badge}`}>
-                  {issue.priority} Priority
-                </span>
-                <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400 border-brand-200 dark:border-brand-500/20">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${CATEGORY_THEME[issue.category]?.chip ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${CATEGORY_THEME[issue.category]?.dot ?? 'bg-slate-400'}`} />
                   {issue.category}
                 </span>
               </div>
@@ -577,15 +568,12 @@ export const IssueDetailPage = () => {
                   userVote === 'up' ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' : 'border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-indigo-200 dark:hover:border-indigo-500/50 hover:bg-indigo-50 dark:hover:bg-indigo-500/10'
                 }`}>
                 <ChevronUp size={22} strokeWidth={userVote === 'up' ? 3 : 2} />
-                <span className="text-sm font-bold">{upvoteCount}</span>
-                <span className="text-xs font-medium opacity-70">Up</span>
               </button>
 
               <div className="text-center px-2">
                 <p className={`text-3xl font-display font-bold ${voteScore >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-500'}`}>
                   {voteScore > 0 ? `+${voteScore}` : voteScore}
                 </p>
-                <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest">score</p>
               </div>
 
               <button onClick={() => handleVote('down')}
@@ -593,7 +581,6 @@ export const IssueDetailPage = () => {
                   userVote === 'down' ? 'border-rose-400 bg-rose-50 dark:bg-rose-500/20 text-rose-500 dark:text-rose-400' : 'border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-rose-200 dark:hover:border-rose-500/50 hover:bg-rose-50 dark:hover:bg-rose-500/10'
                 }`}>
                 <ChevronDown size={22} strokeWidth={userVote === 'down' ? 3 : 2} />
-                <span className="text-xs font-bold">Downvote</span>
               </button>
             </div>
           </div>
@@ -621,12 +608,7 @@ export const IssueDetailPage = () => {
                   <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${sc.badge}`}>{sc.label}</span>
                 </dd>
               </div>
-              <div className="flex gap-2">
-                <dt className="flex items-center gap-1.5 text-slate-400 w-24 shrink-0"><Flag size={14} /> Priority</dt>
-                <dd>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${pc.badge}`}>{issue.priority}</span>
-                </dd>
-              </div>
+
               <div className="flex gap-2">
                 <dt className="flex items-center gap-1.5 text-slate-400 w-24 shrink-0"><Eye size={14} /> Views</dt>
                 <dd className="font-medium text-slate-700 dark:text-slate-300">{issue.viewCount}</dd>

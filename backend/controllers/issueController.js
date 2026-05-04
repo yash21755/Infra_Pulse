@@ -22,7 +22,7 @@ exports.createIssue = async (req, res, next) => {
     }
 
     let buildingId = null;
-    let category = 'General';
+    let category = issueData.category || 'General';
     let subCommunity = 'Campus';
 
     // 1. Geospatial check
@@ -41,9 +41,6 @@ exports.createIssue = async (req, res, next) => {
           if (geoData.success && geoData.building_id) {
             buildingId = geoData.building_id;
             issueData.buildingId = buildingId;
-            if (geoData.building_type) {
-              category = geoData.building_type;
-            }
             subCommunity = buildingId;
           }
         }

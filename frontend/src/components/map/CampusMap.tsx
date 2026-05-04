@@ -40,10 +40,9 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
 
 interface CampusMapProps {
   statusFilter?: string;
-  priorityFilters?: string[];
 }
 
-export const CampusMap = ({ statusFilter = 'All', priorityFilters = ['Critical', 'High', 'Medium', 'Low'] }: CampusMapProps) => {
+export const CampusMap = ({ statusFilter = 'All' }: CampusMapProps) => {
   const defaultCenter: [number, number] = [25.42996, 81.77219];
   const campusBounds: L.LatLngTuple[] = [
     [25.426, 81.768],
@@ -71,12 +70,9 @@ export const CampusMap = ({ statusFilter = 'All', priorityFilters = ['Critical',
         };
         if (issue.status !== statusMap[statusFilter]) return false;
       }
-      if (priorityFilters.length && !priorityFilters.map(p => p.toLowerCase()).includes(issue.priority?.toLowerCase())) {
-        return false;
-      }
       return true;
     });
-  }, [issues, statusFilter, priorityFilters]);
+  }, [issues, statusFilter]);
 
   const positions = filtered.map(i => [i.location.lat, i.location.lng] as [number, number]);
 

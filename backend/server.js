@@ -37,6 +37,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/issues', require('./routes/issueRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+app.use('/api/stats', require('./routes/statsRoutes'));
 
 // Error Handler
 app.use(errorHandler);

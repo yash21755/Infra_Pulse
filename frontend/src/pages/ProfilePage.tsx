@@ -14,7 +14,6 @@ function normalizeIssue(raw: any): Issue {
     category: raw.category ?? 'Electrical',
     tags: raw.tags ?? [],
     status: raw.status ?? 'open',
-    priority: raw.priority ?? 'medium',
     upvotes: Array.isArray(raw.votes) ? raw.votes.length : (raw.upvotes ?? 0),
     downvotes: raw.downvotes ?? 0,
     userVote: raw.userVote ?? null,
