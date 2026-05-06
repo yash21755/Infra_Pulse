@@ -6,7 +6,15 @@ import axios from 'axios';
 import type { Issue, User } from '../types';
 
 /** Reuse the same normalizer as FeedPage */
-function normalizeIssue(raw: any): Issue {
+function normalizeIssue(raw: any, currentUserId?: string): Issue {
+  const upvoterIds   = (Array.isArray(raw.votes)     ? raw.votes     : []).map((v: any) => String(v?._id ?? v));
+  const downvoterIds = (Array.isArray(raw.downvotes) ? raw.downvotes : []).map((v: any) => String(v?._id ?? v));
+  const userVote = currentUserId
+    ? upvoterIds.includes(currentUserId)   ? 'up'
+    : downvoterIds.includes(currentUserId) ? 'down'
+    : null
+    : null;
+
   return {
     id: String(raw._id ?? raw.id),
     title: raw.title ?? '',
@@ -14,9 +22,9 @@ function normalizeIssue(raw: any): Issue {
     category: raw.category ?? 'Electrical',
     tags: raw.tags ?? [],
     status: raw.status ?? 'open',
-    upvotes: Array.isArray(raw.votes) ? raw.votes.length : (raw.upvotes ?? 0),
-    downvotes: raw.downvotes ?? 0,
-    userVote: raw.userVote ?? null,
+    upvotes: upvoterIds.length || (raw.upvotes ?? 0),
+    downvotes: downvoterIds.length || (raw.downvotes ?? 0),
+    userVote: userVote ?? raw.userVote ?? null,
     location: raw.location ?? { lat: 0, lng: 0, label: 'Unknown' },
     images: raw.imageUrl
       ? [{ id: raw._id, url: raw.imageUrl, uploadedAt: raw.createdAt ?? new Date().toISOString(), type: 'report' as const }]
@@ -69,7 +77,7 @@ export const ProfilePage = () => {
       });
 
       const raw = Array.isArray(issuesRes.data) ? issuesRes.data : [];
-      setMyIssues(raw.map(normalizeIssue));
+      setMyIssues(raw.map((item: any) => normalizeIssue(item, ctxUser?.id)));
     } catch (err: any) {
       setError('Could not load profile data. Are you logged in?');
     } finally {

@@ -79,7 +79,7 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, rank, onAction }) =
           {/* Vote Column */}
           <div className="flex flex-col items-center gap-0.5 shrink-0">
             <button
-              className={`p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${issue.userVote === 'up' ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'}`}
+              className={`p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${issue.userVote === 'up' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400 dark:text-slate-500'}`}
               onClick={(e) => handleVote(e, 'up')}
             >
               <ChevronUp size={22} strokeWidth={issue.userVote === 'up' ? 3 : 2} />

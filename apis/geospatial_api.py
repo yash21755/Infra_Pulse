@@ -13,8 +13,8 @@ Key concepts from the paper / presentation
 • Supports two resolution modes:
     1. Polygon geofencing  — GPS point-in-polygon (primary)
     2. Explicit user tag   — student chooses building from a list (override)
-• Falls back to nearest-building approximation when a GPS point lies just
-  outside a registered polygon (handles outdoor corridor-style submissions).
+• Falls back to a 50-metre zone bucket for open-area pins when a GPS point lies
+  outside any registered polygon.
 
 Usage (from your Node.js/Express backend)
 -----------------------------------------
@@ -44,13 +44,11 @@ from shapely.geometry import Point, Polygon
 try:
     from config import (
         CAMPUS_BUILDINGS_CONFIG,
-        NEAREST_BUILDING_THRESHOLD_DEGREES,
         API_HOST,
         GEOSPATIAL_PORT,
     )
 except ImportError:
     CAMPUS_BUILDINGS_CONFIG              = "buildings.json"
-    NEAREST_BUILDING_THRESHOLD_DEGREES   = 0.0009
     API_HOST                             = "0.0.0.0"
     GEOSPATIAL_PORT                      = 8001
 
@@ -71,8 +69,7 @@ class BuildingRegistry:
 
     Resolution cascade:
       1. Exact polygon containment  — pin is inside a known building
-      2. Nearest-boundary fallback  — pin is just outside a polygon (< threshold)
-      3. 50-metre radius zone       — open-area pin; snapped to a ~50 m grid cell
+      2. 50-metre radius zone       — open-area pin; snapped to a ~50 m grid cell
                                       so nearby open-area issues still group together
     """
 
@@ -126,8 +123,7 @@ class BuildingRegistry:
         resolution_method, and approximate_match.
 
         Stage 1: Exact polygon containment.
-        Stage 2: Nearest-boundary fallback (within threshold).
-        Stage 3: 50-metre zone bucket for open-area pins.
+        Stage 2: 50-metre zone bucket for open-area pins.
         """
         point = Point(lon, lat)     # Shapely: (x=lon, y=lat)
 
@@ -136,12 +132,7 @@ class BuildingRegistry:
             if building["polygon"].contains(point):
                 return self._public(building, method="gps_polygon", approx=False)
 
-        # Stage 2 — Boundary proximity fallback
-        nearest = self._nearest_within_threshold(point)
-        if nearest:
-            return nearest
-
-        # Stage 3 — 50 m zone bucket for open areas
+        # Stage 2 — 50 m zone bucket for open areas
         zone_id   = self._zone_id(lat, lon)
         zone_name = f"Open Area Zone {zone_id}"
         logger.info(f"[zone_bucket] ({lat},{lon}) → {zone_id}")
@@ -163,24 +154,6 @@ class BuildingRegistry:
         cell_lat = round(round(lat / self.ZONE_CELL_DEG) * self.ZONE_CELL_DEG, 6)
         cell_lon = round(round(lon / self.ZONE_CELL_DEG) * self.ZONE_CELL_DEG, 6)
         return f"ZONE_{cell_lat}_{cell_lon}"
-
-    def _nearest_within_threshold(self, point: Point) -> Optional[dict]:
-        """Find the nearest building boundary within the configured threshold."""
-        best_dist  = NEAREST_BUILDING_THRESHOLD_DEGREES
-        best_bldg  = None
-
-        for building in self._store.values():
-            d = building["polygon"].exterior.distance(point)
-            if d < best_dist:
-                best_dist  = d
-                best_bldg  = building
-
-        if best_bldg:
-            result = self._public(best_bldg, method="nearest_approximation", approx=True)
-            result["boundary_distance_deg"] = round(best_dist, 7)
-            return result
-
-        return None
 
     # ── Lookup by ID ───────────────────────────────────────────────────────────
     def get_by_id(self, building_id: str) -> Optional[dict]:
@@ -300,8 +273,7 @@ async def resolve_location(req: LocationRequest):
     -------------------
     1. Explicit `user_tag_building_id`   → immediate O(1) dict lookup
     2. Polygon geofencing on (lat, lon)  → exact containment test
-    3. Nearest-boundary approximation    → within configured threshold
-    4. Unresolved                        → prompt student to tag manually
+    3. 50-metre zone bucket              → open-area pins
     """
 
     # ── Priority 1: Explicit user tag ─────────────────────────────────────────
@@ -325,8 +297,8 @@ async def resolve_location(req: LocationRequest):
             message=f"Resolved to {b['building_name']} via explicit user tag.",
         )
 
-    # ── Priority 2, 3 & 4: GPS-based resolution ──────────────────────────────
-    # resolve() always returns a result — building polygon, nearest boundary,
+    # ── Priority 2 & 3: GPS-based resolution ──────────────────────────────
+    # resolve() always returns a result — building polygon,
     # or 50 m zone bucket for open-area pins. Never returns None.
     result = registry.resolve(req.latitude, req.longitude)
 

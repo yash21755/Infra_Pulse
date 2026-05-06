@@ -1,13 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { IssueCard } from '../issues/IssueCard';
 import { Button } from '../components/ui/Button';
 import axios from 'axios';
 import { Search, Plus, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Issue } from '../types';
+import { AuthContext } from '../context/AuthContext';
 
 /** Normalize a raw MongoDB issue document into the frontend Issue shape */
-function normalizeIssue(raw: any): Issue {
+function normalizeIssue(raw: any, currentUserId?: string): Issue {
+  const upvoterIds   = (Array.isArray(raw.votes)     ? raw.votes     : []).map((v: any) => String(v?._id ?? v));
+  const downvoterIds = (Array.isArray(raw.downvotes) ? raw.downvotes : []).map((v: any) => String(v?._id ?? v));
+  const userVote = currentUserId
+    ? upvoterIds.includes(currentUserId)   ? 'up'
+    : downvoterIds.includes(currentUserId) ? 'down'
+    : null
+    : null;
+
   return {
     id: String(raw._id ?? raw.id),
     title: raw.title ?? '',
@@ -15,9 +24,9 @@ function normalizeIssue(raw: any): Issue {
     category: raw.category ?? 'General',
     tags: raw.tags ?? [],
     status: raw.status ?? 'open',
-    upvotes: Array.isArray(raw.votes) ? raw.votes.length : (raw.upvotes ?? 0),
-    downvotes: raw.downvotes ?? 0,
-    userVote: raw.userVote ?? null,
+    upvotes: upvoterIds.length || (raw.upvotes ?? 0),
+    downvotes: downvoterIds.length || (raw.downvotes ?? 0),
+    userVote: userVote ?? raw.userVote ?? null,
     location: raw.location ?? { lat: 0, lng: 0, label: 'Unknown' },
     images: raw.imageUrl
       ? [{ id: raw._id, url: raw.imageUrl, uploadedAt: raw.createdAt ?? new Date().toISOString(), type: 'report' as const }]
@@ -51,6 +60,7 @@ export const CATEGORY_THEME: Record<string, {
 const ALL_CATEGORIES = Object.keys(CATEGORY_THEME);
 
 export const FeedPage: React.FC = () => {
+  const { user } = useContext(AuthContext) || {};
   const [searchTerm, setSearchTerm]           = useState('');
   const [issues, setIssues]                   = useState<Issue[]>([]);
   const [statusFilter, setStatusFilter]       = useState('All');
@@ -64,7 +74,7 @@ export const FeedPage: React.FC = () => {
     setError('');
     axios.get('/api/issues').then(res => {
       const raw = Array.isArray(res.data) ? res.data : [];
-      setIssues(raw.map(normalizeIssue));
+      setIssues(raw.map((item: any) => normalizeIssue(item, user?.id)));
       setLoading(false);
     }).catch(() => {
       setError('Failed to load issues. Make sure the backend is running.');

@@ -16,6 +16,53 @@ Three independent FastAPI microservices implementing the full ML pipeline from t
 
 ---
 
+## Methodology & Architecture Approach
+
+Infra_Pulse utilizes three specialized ML and algorithmic microservices designed to tackle urban and campus infrastructure reporting at scale. Our approach addresses key bottlenecks in traditional reporting systems: spatial ambiguity, duplicated reports, and static chronological feeds.
+
+### 1. Geospatial Pre-Filtering (O(1) Search Space Reduction)
+Instead of relying on computationally expensive and often inaccurate Euclidean radius searches (which fail for multi-story or adjacent buildings), we map raw GPS coordinates into strict semantic boundaries.
+* **Point-in-Polygon:** We use `shapely` topological geometry against OpenStreetMap (OSM) polygons.
+* **Open Area Fallbacks:** If a coordinate falls completely outside all registered buildings, it is deterministically hashed into a ~50-meter grid bucket (`ZONE_lat_lon`).
+* **Why?** This reduces the vector search space for our redundancy pipeline from the entire database down to only the active issues within that specific building or 50m zone.
+
+### 2. Multi-Modal Redundancy Detection
+We prevent duplicate issue spam by semantically comparing incoming reports against active reports in the same geographic cluster.
+* **CLIP Encodings:** We use OpenAI's CLIP (`ViT-B/32`) to encode both the textual description and the image of a report into a joint 512-dimensional embedding space.
+* **Fusion:** Text and image embeddings are concatenated to form a 1024-dimensional representation.
+* **Cosine Similarity Fallback & MLP:** Initially, duplicate checks rely on a weighted Cosine Similarity of the text and visual vectors against a localized in-memory vector store. As the platform matures and labels are collected, this is intended to be upgraded to a trained Neural Network (MLP Coupling Network) to classify pairs directly.
+
+### 3. Dynamic Priority Ranking (Velocity + Decay)
+A simple chronological feed hides critical issues, while an upvote-only feed creates stagnant echo chambers. We implemented a continuous, time-decayed ranking algorithm.
+* **Log-Time Decay:** Base scores decay logarithmically over a configured half-life to gradually deprecate old issues.
+* **Engagement Velocity:** Upvotes and *dwell time* (active reading time) dynamically boost an issue's score. The system tracks "velocity" (votes per 5-minute window) to identify rapidly trending emergencies.
+* **Diversity Rules:** Penalizes long streaks of identical categories to ensure varied visibility.
+
+---
+
+## Data Flow & Workflows
+
+**1. Issue Submission Workflow**
+* **Client** sends GPS coordinates, description, and an optional image.
+* **Node.js** forwards GPS to **Geospatial API** → gets a `building_id` or `ZONE` ID.
+* **Node.js** forwards image/text + `building_id` to **Redundancy API**.
+  * *If redundant:* Submission is halted; user is redirected to the existing issue.
+  * *If novel:* **Node.js** saves to MongoDB/PostgreSQL.
+* **Node.js** asynchronously registers the novel issue's embeddings with the **Redundancy API** and initializes its rank in the **Priority API**.
+
+**2. Engagement Workflow**
+* Users view issues (triggering dwell-time metrics) and cast upvotes.
+* **Node.js** forwards these interactions to the **Priority API**.
+* **Priority API** updates internal velocity tracking and recalculates the continuous score.
+* When the Client requests the feed, the **Priority API** provides a dynamically sorted list.
+
+**3. Resolution Workflow**
+* Admin or authoritative user marks an issue as resolved.
+* **Node.js** instructs the **Redundancy API** to drop the vector (preventing it from matching future issues).
+* **Node.js** instructs the **Priority API** to mark the issue resolved, removing it from the active ranked feed.
+
+---
+
 ## Quick Start
 
 ```bash

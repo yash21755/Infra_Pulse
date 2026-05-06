@@ -27,7 +27,7 @@ COCO_MINI_DIR = "d:/Infra_Pulse/COCO_MINI"
 IMAGES_DIR = os.path.join(COCO_MINI_DIR, "Images")
 CAPTIONS_FILE = os.path.join(COCO_MINI_DIR, "captions.json")
 
-def load_data(fraction=0.05):
+def load_data(fraction=1.00):
     logger.info("Loading captions...")
     with open(CAPTIONS_FILE, "r") as f:
         captions_data = json.load(f)
@@ -106,13 +106,12 @@ def main():
     # Use a specific testing building ID to isolate matches
     TEST_BUILDING = "TEST_EVAL"
     
-    sampled_ids, image_to_caps = load_data(fraction=0.05)
+    sampled_ids, image_to_caps = load_data(fraction=1.00)
     pairs = generate_pairs(sampled_ids, image_to_caps)
     
     logger.info(f"Generated {len(pairs)} test pairs (50% positive, 50% negative)")
     
     y_true = []
-    y_pred = []
     y_scores = []
     
     start_time = time.time()
@@ -141,10 +140,8 @@ def main():
                 matches = redundancy_api._find_matches(fused2, vis2, txt2, TEST_BUILDING, top_k=1)
                 
                 score = matches[0][1] if matches else 0.0
-                pred = 1 if score >= redundancy_api.REDUNDANCY_THRESHOLD else 0
                 
                 y_true.append(label)
-                y_pred.append(pred)
                 y_scores.append(score)
                 
             except Exception as e:
@@ -165,40 +162,47 @@ def main():
         logger.error("No pairs were successfully processed. Cannot compute metrics.")
         return
 
-    # Calculate metrics
-    accuracy = accuracy_score(y_true, y_pred)
-    precision = precision_score(y_true, y_pred, zero_division=0)
-    recall = recall_score(y_true, y_pred, zero_division=0)
-    f1 = f1_score(y_true, y_pred, zero_division=0)
-    cm = confusion_matrix(y_true, y_pred)
+    print("\n" + "="*60)
+    print("  REDUNDANCY MODEL VALIDATION RESULTS (100% COCO_MINI)  ")
+    print("="*60)
+    print(f"Total pairs tested : {len(y_true)}")
+    print(f"Time taken         : {total_time:.2f} seconds")
     
     try:
         roc_auc = roc_auc_score(y_true, y_scores)
     except Exception:
         roc_auc = 0.0
-        
-    print("\n" + "="*60)
-    print("  REDUNDANCY MODEL VALIDATION RESULTS (5% COCO_MINI)  ")
-    print("="*60)
-    print(f"Total pairs tested : {len(y_true)}")
-    print(f"Time taken         : {total_time:.2f} seconds")
-    print(f"Threshold used     : {redundancy_api.REDUNDANCY_THRESHOLD}")
-    print("-"*60)
-    print(f"Accuracy           : {accuracy:.4f}")
-    print(f"Precision          : {precision:.4f}")
-    print(f"Recall             : {recall:.4f}")
-    print(f"F1 Score           : {f1:.4f}")
+
     print(f"ROC AUC            : {roc_auc:.4f}")
-    print("-"*60)
-    print("Confusion Matrix:")
-    if cm.size == 4:
-        print(f"  True Negatives   : {cm[0][0]}")
-        print(f"  False Positives  : {cm[0][1]}")
-        print(f"  False Negatives  : {cm[1][0]}")
-        print(f"  True Positives   : {cm[1][1]}")
-    else:
-        print(f"  Matrix: {cm}")
-    print("="*60)
+
+    thresholds_to_test = [0.80, 0.85, 0.90]
+    for threshold in thresholds_to_test:
+        y_pred = [1 if s >= threshold else 0 for s in y_scores]
+        
+        accuracy = accuracy_score(y_true, y_pred)
+        precision = precision_score(y_true, y_pred, zero_division=0)
+        recall = recall_score(y_true, y_pred, zero_division=0)
+        f1 = f1_score(y_true, y_pred, zero_division=0)
+        cm = confusion_matrix(y_true, y_pred)
+        
+        print("\n" + "-"*60)
+        print(f"Results for Threshold: {threshold:.2f}")
+        print("-"*60)
+        print(f"Accuracy           : {accuracy:.4f}")
+        print(f"Precision          : {precision:.4f}")
+        print(f"Recall             : {recall:.4f}")
+        print(f"F1 Score           : {f1:.4f}")
+        print("-"*60)
+        print("Confusion Matrix:")
+        if cm.size == 4:
+            print(f"  True Negatives   : {cm[0][0]}")
+            print(f"  False Positives  : {cm[0][1]}")
+            print(f"  False Negatives  : {cm[1][0]}")
+            print(f"  True Positives   : {cm[1][1]}")
+        else:
+            print(f"  Matrix: {cm}")
+            
+    print("\n" + "="*60)
 
 if __name__ == "__main__":
     main()

@@ -565,7 +565,7 @@ export const IssueDetailPage = () => {
             <div className="flex items-center justify-between gap-2">
               <button onClick={() => handleVote('up')}
                 className={`flex-1 flex flex-col items-center py-3 rounded-xl border-2 transition-all gap-0.5 ${
-                  userVote === 'up' ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' : 'border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-indigo-200 dark:hover:border-indigo-500/50 hover:bg-indigo-50 dark:hover:bg-indigo-500/10'
+                  userVote === 'up' ? 'border-purple-400 bg-purple-50 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400' : 'border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-purple-200 dark:hover:border-purple-500/50 hover:bg-purple-50 dark:hover:bg-purple-500/10'
                 }`}>
                 <ChevronUp size={22} strokeWidth={userVote === 'up' ? 3 : 2} />
               </button>
