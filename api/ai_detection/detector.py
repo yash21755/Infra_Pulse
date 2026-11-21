@@ -4,14 +4,14 @@ from typing import Union, Dict, Any
 
 import torch
 from PIL import Image
-from transformers import CLIPProcessor, CLIPModel
+from transformers import CLIPModel, CLIPImageProcessor
 
 from .config import CLIP_MODEL_NAME, EMBEDDING_DIM, WEIGHTS_PATH, AI_THRESHOLD
 from .model import UnivFDHead
 
 
 class AIImageDetector:
-    def __init__(self, weights_path: str = WEIGHTS_PATH, threshold: float = AI_THRESHOLD, load_clip: bool = True):
+    def __init__(self, weights_path: str = WEIGHTS_PATH, threshold: float = AI_THRESHOLD, load_clip: bool = False):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.threshold = threshold
 
@@ -31,7 +31,7 @@ class AIImageDetector:
 
     def _init_clip(self):
         if self.clip_model is None:
-            self.processor = CLIPProcessor.from_pretrained(CLIP_MODEL_NAME)
+            self.processor = CLIPImageProcessor.from_pretrained(CLIP_MODEL_NAME)
             self.clip_model = CLIPModel.from_pretrained(CLIP_MODEL_NAME).to(self.device)
             self.clip_model.eval()
 

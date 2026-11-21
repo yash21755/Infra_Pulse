@@ -1,6 +1,12 @@
 import sys
 import torch
-from api.ai_detection import AIImageDetector
+try:
+    from apis.ai_detection import AIImageDetector
+except ImportError:
+    try:
+        from api.ai_detection import AIImageDetector
+    except ImportError:
+        from detector import AIImageDetector
 
 
 def main():

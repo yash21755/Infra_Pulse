@@ -7,10 +7,13 @@ import torch.nn as nn
 from PIL import Image, ImageFilter
 from torch.utils.data import DataLoader
 from torchvision import datasets
-from transformers import CLIPModel, CLIPProcessor
-
-from config import CLIP_MODEL_NAME, EMBEDDING_DIM, WEIGHTS_DIR, WEIGHTS_PATH
-from model import UnivFDHead
+from transformers import CLIPModel, CLIPImageProcessor
+try:
+    from .config import CLIP_MODEL_NAME, EMBEDDING_DIM, WEIGHTS_DIR, WEIGHTS_PATH
+    from .model import UnivFDHead
+except ImportError:
+    from config import CLIP_MODEL_NAME, EMBEDDING_DIM, WEIGHTS_DIR, WEIGHTS_PATH
+    from model import UnivFDHead
 
 
 class SmartphoneUploadAugment:
@@ -76,7 +79,7 @@ def train(
     print(f"Training UnivFD head on {device}...")
 
     # 1. Load frozen CLIP Vision Encoder
-    processor = CLIPProcessor.from_pretrained(CLIP_MODEL_NAME)
+    processor = CLIPImageProcessor.from_pretrained(CLIP_MODEL_NAME)
     clip_model = CLIPModel.from_pretrained(CLIP_MODEL_NAME).to(device)
     clip_model.eval()
     for param in clip_model.parameters():
