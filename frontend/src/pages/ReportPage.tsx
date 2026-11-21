@@ -7,6 +7,8 @@ import 'leaflet/dist/leaflet.css';
 import axios from 'axios';
 import L from 'leaflet';
 
+const API_URL = `${import.meta.env.VITE_API_URL ?? 'http://localhost:5000'}/api`;
+
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
@@ -89,7 +91,7 @@ export const ReportPage = () => {
         data.append('image', imageFile);
       }
 
-      await axios.post('http://localhost:5000/api/issues', data, {
+      await axios.post(`${API_URL}/issues`, data, {
         headers: {
           'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${token}`,

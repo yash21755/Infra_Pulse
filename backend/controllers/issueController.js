@@ -42,6 +42,8 @@ exports.createIssue = async (req, res, next) => {
           if (geoData.success && geoData.building_id) {
             buildingId = geoData.building_id;
             issueData.buildingId = buildingId;
+            // Store immutable H3 index for later use
+            issueData.h3_res12 = geoData.building_id;
             subCommunity = buildingId;
           }
         }

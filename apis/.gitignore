@@ -1,1 +1,19 @@
+# Environment variables
 .env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# ML artefacts
+data/
+models/
+*.pkl
+*.pt
+*.pth

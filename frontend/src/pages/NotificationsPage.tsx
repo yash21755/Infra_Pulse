@@ -3,6 +3,8 @@ import { CheckCircle2, MessageSquare, ChevronUp, Bell, Trash2 } from 'lucide-rea
 import { Button } from '../components/ui/Button';
 import axios from 'axios';
 
+const API_URL = `${import.meta.env.VITE_API_URL ?? 'http://localhost:5000'}/api`;
+
 interface NotificationProps {
   _id: string;
   type: string;
@@ -21,7 +23,7 @@ export const NotificationsPage = () => {
 
   const fetchNotifications = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/notifications', { withCredentials: true });
+      const res = await axios.get(`${API_URL}/notifications`, { withCredentials: true });
       setNotifications(res.data);
     } catch (err) {
       console.error(err);
@@ -30,7 +32,7 @@ export const NotificationsPage = () => {
 
   const markAllAsRead = async () => {
     try {
-      await axios.put('http://localhost:5000/api/notifications/all/read', {}, { withCredentials: true });
+      await axios.put(`${API_URL}/notifications/all/read`, {}, { withCredentials: true });
       setNotifications(prev => prev.map(n => ({...n, read: true})));
     } catch (err) {
       console.error(err);
@@ -40,7 +42,7 @@ export const NotificationsPage = () => {
   const markAsRead = async (id: string, read: boolean) => {
     if (read) return;
     try {
-      await axios.put(`http://localhost:5000/api/notifications/${id}/read`, {}, { withCredentials: true });
+      await axios.put(`${API_URL}/notifications/${id}/read`, {}, { withCredentials: true });
       setNotifications(prev => prev.map(n => n._id === id ? {...n, read: true} : n));
     } catch (err) {
       console.error(err);
@@ -49,7 +51,7 @@ export const NotificationsPage = () => {
 
   const clearAllNotifications = async () => {
     try {
-      await axios.delete('http://localhost:5000/api/notifications/all', { withCredentials: true });
+      await axios.delete(`${API_URL}/notifications/all`, { withCredentials: true });
       setNotifications([]);
       setConfirmClear(false);
     } catch (err) {

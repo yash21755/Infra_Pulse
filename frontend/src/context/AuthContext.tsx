@@ -2,7 +2,8 @@ import React, { createContext, useState, useEffect, useRef, useCallback } from '
 import type { User } from '../types';
 import axios from 'axios';
 
-const API = 'http://localhost:5000/api';
+const API = `${import.meta.env.VITE_API_URL ?? 'http://localhost:5000'}/api`;
+
 
 /** Session duration: 30 minutes in milliseconds */
 const SESSION_DURATION_MS = 30 * 60 * 1000;

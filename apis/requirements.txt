@@ -15,7 +15,7 @@ numpy==2.4.4
 scikit-learn==1.8.0            # cosine_similarity, preprocessing
 
 # ── Geospatial ─────────────────────────────────────────────────────────────────
-shapely==2.1.2                 # Polygon geofencing
+h3==4.5.1                      # Uber H3 hexagonal spatial indexing system
 
 # ── Data & Serialization ───────────────────────────────────────────────────────
 pydantic==2.13.3

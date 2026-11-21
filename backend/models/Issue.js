@@ -17,7 +17,8 @@ const issueSchema = new mongoose.Schema({
   },
   publicId: { type: String, unique: true, sparse: true },
   imageUrl: { type: String },
-  buildingId: { type: String }, // From Geospatial API
+  h3_res12: { type: String, immutable: true }, // Uber H3 Resolution 12 spatial index (immutable)
+  buildingId: { type: String }, // Legacy identifier maintained for compatibility
   category: { type: String, default: 'General' }, // For Priority API diversity
   subCommunity: { type: String, default: 'Campus' }, // For Priority API diversity
   createdAt: { type: Date, default: Date.now },

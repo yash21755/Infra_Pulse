@@ -1,5 +1,16 @@
+# Environment variables — never commit real secrets
 .env
-node_modules
-.env.local
-.env.test
-.env.example
+.env.*
+!.env.example
+!.env.*.example
+
+# Dependencies
+node_modules/
+
+# User uploads (runtime content)
+uploads/*
+!uploads/.gitkeep
+
+# Logs
+*.log
+logs/

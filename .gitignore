@@ -1,1 +1,64 @@
-COCO_MINI
+## ─── Secrets & Environment Variables ─────────────────────────────────────────
+# Never commit actual .env files — commit only .env.example templates
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+## ─── Node / npm ───────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+package-lock.json
+
+## ─── Frontend Build Artefacts ─────────────────────────────────────────────────
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+## ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+*.so
+
+## ─── ML / Data artefacts ──────────────────────────────────────────────────────
+apis/data/
+apis/models/
+*.pkl
+*.pt
+*.pth
+
+## ─── Uploads (user-generated content) ────────────────────────────────────────
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+## ─── Logs ─────────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+## ─── OS & Editor ──────────────────────────────────────────────────────────────
+COCO_MINI/
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

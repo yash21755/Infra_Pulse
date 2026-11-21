@@ -1,28 +1,24 @@
 """
-geospatial_api.py — Infra_Pulse Geospatial Pre-Filtering Service
-================================================================
-Translates raw GPS coordinates into discrete campus building identifiers,
-reducing the redundancy-check search space from N (entire database) to K
-(building-specific subset) — achieving O(1) lookup complexity for the ML
-pipeline downstream.
+geospatial_api.py — Infra_Pulse Dynamic H3 Geospatial Pre-Filtering Service
+===========================================================================
+Replaces legacy polygon geofencing and 50m radius fallbacks with Uber's H3
+hexagonal hierarchical spatial index.
 
-Key concepts from the paper / presentation
-------------------------------------------
-• Replaces Euclidean distance checks (which fail across multi-storey buildings
-  or adjacent structures) with indexed topological polygon queries.
-• Supports two resolution modes:
-    1. Polygon geofencing  — GPS point-in-polygon (primary)
-    2. Explicit user tag   — student chooses building from a list (override)
-• Falls back to a 50-metre zone bucket for open-area pins when a GPS point lies
-  outside any registered polygon.
+Core Mechanics:
+1. Immutable Level-12 Storage: Every (lat, lon) is hashed once at Res 12.
+2. Dynamic Resolution Reconfiguration: Regions start at Res 10 and scale up
+   to Res 11 (N >= 10) and Res 12 (N >= 100) based on open issue density.
+3. Hysteresis Compaction: Downgrades only trigger at lower bounds (<= 60 for
+   Res 12->11, <= 6 for Res 11->10) to prevent boundary thrashing.
+4. O(1) K=1 Neighborhood Retrieval: Derives active parent cell via bit-shifting
+   and returns the center + 6 immediate neighbors for ML pre-filtering.
 
-Usage (from your Node.js/Express backend)
------------------------------------------
+Endpoints:
     POST http://localhost:8001/resolve-location
-    Body: { "latitude": 25.4401, "longitude": 81.8703 }
-
-    GET  http://localhost:8001/buildings
-    GET  http://localhost:8001/buildings/{building_id}
+    POST http://localhost:8001/resolve-location/batch
+    POST http://localhost:8001/issues/open
+    POST http://localhost:8001/issues/resolve
+    GET  http://localhost:8001/regions
     GET  http://localhost:8001/health
 """
 
@@ -30,225 +26,241 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from shapely.geometry import Point, Polygon
 
-# ── Import shared config ───────────────────────────────────────────────────────
 try:
-    from config import (
-        CAMPUS_BUILDINGS_CONFIG,
-        API_HOST,
-        GEOSPATIAL_PORT,
-    )
-except ImportError:
-    CAMPUS_BUILDINGS_CONFIG              = "buildings.json"
-    API_HOST                             = "0.0.0.0"
-    GEOSPATIAL_PORT                      = 8001
+    import h3
+except ImportError as exc:
+    raise ImportError("The 'h3' library is required. Install it via: pip install h3") from exc
 
-# ── Logging ────────────────────────────────────────────────────────────────────
+# ── Config & Logging ───────────────────────────────────────────────────────────
+try:
+    from config import API_HOST, GEOSPATIAL_PORT
+except ImportError:
+    API_HOST = "0.0.0.0"
+    GEOSPATIAL_PORT = 8001
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | geo_api | %(message)s",
 )
 logger = logging.getLogger("geospatial_api")
 
+# ── H3 v3 / v4 Compatibility Layer ─────────────────────────────────────────────
+def _latlng_to_cell(lat: float, lon: float, res: int) -> str:
+    if hasattr(h3, "latlng_to_cell"):
+        return h3.latlng_to_cell(lat, lon, res)
+    return h3.geo_to_h3(lat, lon, res)
+
+
+def _cell_to_parent(cell: str, res: int) -> str:
+    if hasattr(h3, "cell_to_parent"):
+        return h3.cell_to_parent(cell, res)
+    return h3.h3_to_parent(cell, res)
+
+
+def _grid_disk(cell: str, k: int = 1) -> List[str]:
+    if hasattr(h3, "grid_disk"):
+        return list(h3.grid_disk(cell, k))
+    return list(h3.k_ring(cell, k))
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
-# Building Registry
+# H3 Dynamic Spatial Manager
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class BuildingRegistry:
+class H3SpatialManager:
     """
-    Manages campus building polygons loaded from OSM data.
-
-    Resolution cascade:
-      1. Exact polygon containment  — pin is inside a known building
-      2. 50-metre radius zone       — open-area pin; snapped to a ~50 m grid cell
-                                      so nearby open-area issues still group together
+    Manages immutable Res-12 hashing, per-region (Res-10) open issue counts,
+    and dynamic resolution reconfiguration with hysteresis.
     """
 
-    # ~50 metres in degrees (latitude-safe approximation at 25°N)
-    ZONE_CELL_DEG = 0.00045   # ≈ 50 m
+    RES_BASE = 10
+    RES_STORAGE = 12
 
-    def __init__(self, config_path: Optional[str] = None) -> None:
-        self._store: Dict[str, dict] = {}
-        self._load(config_path or CAMPUS_BUILDINGS_CONFIG)
+    # Upgrade thresholds (Subdivision / Zoom-In)
+    UPGRADE_TO_11 = 10
+    UPGRADE_TO_12 = 100
 
-    # ── Loader ─────────────────────────────────────────────────────────────────
-    def _load(self, config_path: str) -> None:
-        path = Path(config_path)
-        if not path.exists():
-            logger.error(
-                f"Buildings config not found at '{path}'. "
-                "No buildings will be registered — geospatial resolution will fail."
-            )
+    # Downgrade thresholds (Hysteresis Compaction / Zoom-Out)
+    DOWNGRADE_TO_11 = 60
+    DOWNGRADE_TO_10 = 6
+
+    def __init__(self, state_path: Optional[Path] = None) -> None:
+        self._state_path = state_path or Path(__file__).with_name("h3_region_state.json")
+        # Structure: { parent_10_id: {"open_count": int, "active_res": int} }
+        self._regions: Dict[str, Dict[str, int]] = {}
+        self._load_state()
+
+    def _load_state(self) -> None:
+        if not self._state_path.exists():
             return
+        try:
+            with open(self._state_path, "r", encoding="utf-8") as fh:
+                self._regions = json.load(fh)
+            logger.info(f"Loaded H3 state for {len(self._regions)} regions from '{self._state_path}'")
+        except Exception as exc:
+            logger.error(f"Failed to load H3 state: {exc}")
+            self._regions = {}
 
-        with open(path, "r") as fh:
-            raw = json.load(fh)
+    def _save_state(self) -> None:
+        try:
+            with open(self._state_path, "w", encoding="utf-8") as fh:
+                json.dump(self._regions, fh, indent=2)
+        except Exception as exc:
+            logger.error(f"Failed to save H3 state: {exc}")
 
-        for b in raw.get("buildings", []):
-            try:
-                # Convert [lat, lon] → Shapely (lon, lat) convention
-                coords = [(c[1], c[0]) for c in b["polygon"]]
-                poly   = Polygon(coords)
+    def _get_region(self, parent_10: str) -> Dict[str, int]:
+        if parent_10 not in self._regions:
+            self._regions[parent_10] = {
+                "open_count": 0,
+                "active_res": self.RES_BASE,
+            }
+        return self._regions[parent_10]
 
-                if not poly.is_valid:
-                    poly = poly.buffer(0)   # Auto-repair degenerate polygons
+    def _recalculate_resolution(self, region: Dict[str, int]) -> int:
+        """Apply log-scale upgrade and hysteresis downgrade rules."""
+        n = region["open_count"]
+        curr = region["active_res"]
 
-                self._store[b["id"]] = {
-                    "id":       b["id"],
-                    "name":     b["name"],
-                    "type":     b.get("type", "unknown"),
-                    "tags":     b.get("tags", []),
-                    "polygon":  poly,
-                    # centroid stored as (lat, lon) for human readability
-                    "centroid": (round(poly.centroid.y, 6), round(poly.centroid.x, 6)),
-                }
-            except Exception as exc:
-                logger.error(f"Skipping building '{b.get('id', '?')}': {exc}")
+        # Subdivision (Zoom-In)
+        if n >= self.UPGRADE_TO_12:
+            curr = 12
+        elif n >= self.UPGRADE_TO_11 and curr < 11:
+            curr = 11
 
-        logger.info(f"Loaded {len(self._store)} campus buildings from '{path}'")
+        # Compaction with Hysteresis (Zoom-Out)
+        if curr == 12 and n <= self.DOWNGRADE_TO_11:
+            curr = 11
+        if curr == 11 and n <= self.DOWNGRADE_TO_10:
+            curr = 10
 
-    # ── Core resolution ────────────────────────────────────────────────────────
+        region["active_res"] = curr
+        return curr
+
     def resolve(self, lat: float, lon: float) -> dict:
         """
-        Returns a dict with building_id, building_name, building_type,
-        resolution_method, and approximate_match.
-
-        Stage 1: Exact polygon containment.
-        Stage 2: 50-metre zone bucket for open-area pins.
+        Hash (lat, lon) to immutable Res-12, determine the region's active
+        resolution, and return the K=1 neighborhood for candidate filtering.
         """
-        point = Point(lon, lat)     # Shapely: (x=lon, y=lat)
+        h3_res12 = _latlng_to_cell(lat, lon, self.RES_STORAGE)
+        parent_10 = _cell_to_parent(h3_res12, self.RES_BASE)
+        region = self._regions.get(parent_10, {"open_count": 0, "active_res": self.RES_BASE})
 
-        # Stage 1 — Exact containment
-        for building in self._store.values():
-            if building["polygon"].contains(point):
-                return self._public(building, method="gps_polygon", approx=False)
+        active_res = region["active_res"]
+        query_cell = _cell_to_parent(h3_res12, active_res)
+        neighbor_cells = _grid_disk(query_cell, k=1)
 
-        # Stage 2 — 50 m zone bucket for open areas
-        zone_id   = self._zone_id(lat, lon)
-        zone_name = f"Open Area Zone {zone_id}"
-        logger.info(f"[zone_bucket] ({lat},{lon}) → {zone_id}")
         return {
-            "building_id":       zone_id,
-            "building_name":     zone_name,
-            "building_type":     "outdoor_zone",
-            "tags":              ["outdoor", "open_area"],
-            "centroid":          (round(lat, 5), round(lon, 5)),
-            "resolution_method": "zone_bucket",
-            "approximate_match": True,
+            "h3_res12": h3_res12,
+            "parent_10": parent_10,
+            "active_res": active_res,
+            "query_cell": query_cell,
+            "neighbor_cells": neighbor_cells,
+            "open_count": region["open_count"],
         }
 
-    def _zone_id(self, lat: float, lon: float) -> str:
-        """
-        Snap coordinates to a ~50 m grid cell and return a stable string ID.
-        Two pins within ~50 m of each other will hash to the same cell.
-        """
-        cell_lat = round(round(lat / self.ZONE_CELL_DEG) * self.ZONE_CELL_DEG, 6)
-        cell_lon = round(round(lon / self.ZONE_CELL_DEG) * self.ZONE_CELL_DEG, 6)
-        return f"ZONE_{cell_lat}_{cell_lon}"
+    def update_open_count(
+        self,
+        delta: int,
+        h3_res12: Optional[str] = None,
+        lat: Optional[float] = None,
+        lon: Optional[float] = None,
+    ) -> dict:
+        """Increment (+1) or decrement (-1) open count for a region and persist."""
+        if not h3_res12:
+            if lat is None or lon is None:
+                raise ValueError("Provide either 'h3_res12' or both 'latitude' and 'longitude'.")
+            h3_res12 = _latlng_to_cell(lat, lon, self.RES_STORAGE)
 
-    # ── Lookup by ID ───────────────────────────────────────────────────────────
-    def get_by_id(self, building_id: str) -> Optional[dict]:
-        b = self._store.get(building_id)
-        return self._public(b) if b else None
+        parent_10 = _cell_to_parent(h3_res12, self.RES_BASE)
+        region = self._get_region(parent_10)
 
-    # ── List all buildings ─────────────────────────────────────────────────────
-    def list_all(self) -> List[dict]:
-        return [
-            {
-                "building_id":   b["id"],
-                "building_name": b["name"],
-                "building_type": b["type"],
-                "tags":          b["tags"],
-                "centroid_lat":  b["centroid"][0],
-                "centroid_lon":  b["centroid"][1],
-            }
-            for b in self._store.values()
-        ]
+        old_res = region["active_res"]
+        region["open_count"] = max(0, region["open_count"] + delta)
+        new_res = self._recalculate_resolution(region)
 
-    # ── Internal helper ────────────────────────────────────────────────────────
-    @staticmethod
-    def _public(b: dict, method: str = "id_lookup", approx: bool = False) -> dict:
+        # Clean up empty regions at base resolution to keep state lean
+        if region["open_count"] == 0 and new_res == self.RES_BASE:
+            self._regions.pop(parent_10, None)
+
+        self._save_state()
+
+        if new_res != old_res:
+            logger.info(
+                f"[reconfig] Region {parent_10}: Res {old_res} -> Res {new_res} "
+                f"(open_count={region['open_count']})"
+            )
+
         return {
-            "building_id":   b["id"],
-            "building_name": b["name"],
-            "building_type": b["type"],
-            "tags":          b["tags"],
-            "centroid":      b["centroid"],
-            "resolution_method": method,
-            "approximate_match": approx,
+            "h3_res12": h3_res12,
+            "parent_10": parent_10,
+            "open_count": region["open_count"],
+            "previous_res": old_res,
+            "active_res": new_res,
         }
 
+    def list_regions(self) -> Dict[str, Dict[str, int]]:
+        return dict(self._regions)
 
 
 # ── Module-level singleton ─────────────────────────────────────────────────────
-registry = BuildingRegistry()
+spatial_manager = H3SpatialManager()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# FastAPI App
+# FastAPI App & Schemas
 # ═══════════════════════════════════════════════════════════════════════════════
 
 app = FastAPI(
-    title       = "Infra_Pulse — Geospatial Pre-Filter",
-    description = (
-        "Maps GPS coordinates → campus building IDs for O(1) ML pipeline pre-filtering. "
-        "Replaces Euclidean distance with topological polygon intersection."
+    title="Infra_Pulse — H3 Geospatial Pre-Filter",
+    description=(
+        "Dynamic H3 hexagonal spatial indexing with immutable Level-12 storage, "
+        "log-scale resolution reconfiguration, hysteresis compaction, and K=1 neighborhood lookup."
     ),
-    version     = "1.0.0",
+    version="2.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins  = ["*"],
-    allow_methods  = ["*"],
-    allow_headers  = ["*"],
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Request / Response Schemas
-# ═══════════════════════════════════════════════════════════════════════════════
 
 class LocationRequest(BaseModel):
-    latitude:              float        = Field(..., ge=-90,  le=90,  description="GPS latitude")
-    longitude:             float        = Field(..., ge=-180, le=180, description="GPS longitude")
-    user_tag_building_id:  Optional[str] = Field(
-        None,
-        description="Optional: explicit building ID supplied by the student. "
-                    "When present this takes priority over GPS polygon inference."
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "latitude":             25.4401,
-                "longitude":            81.8703,
-                "user_tag_building_id": None,
-            }
-        }
-    }
+    latitude: float = Field(..., ge=-90, le=90, description="GPS latitude")
+    longitude: float = Field(..., ge=-180, le=180, description="GPS longitude")
 
 
 class LocationResponse(BaseModel):
-    success:              bool
-    building_id:          Optional[str]
-    building_name:        Optional[str]
-    building_type:        Optional[str]
-    tags:                 Optional[List[str]]
-    resolution_method:    str      # gps_polygon | user_tag | nearest_approximation | unresolved
-    approximate_match:    bool
-    message:              str
+    success: bool
+    # Kept as building_id for backward compatibility with downstream Node.js/ML callers
+    building_id: str
+    h3_res12: str
+    parent_10: str
+    active_res: int
+    query_cell: str
+    neighbor_cells: List[str]
+    open_count_in_region: int
+    resolution_method: str
+    message: str
 
 
 class BatchLocationRequest(BaseModel):
     locations: List[LocationRequest] = Field(..., max_length=100)
+
+
+class IssueLifecycleRequest(BaseModel):
+    h3_res12: Optional[str] = Field(None, description="Stored Level-12 H3 index of the issue")
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -258,102 +270,84 @@ class BatchLocationRequest(BaseModel):
 @app.get("/health")
 async def health():
     return {
-        "status":           "healthy",
-        "service":          "geospatial_filter",
-        "buildings_loaded": len(registry._store),
+        "status": "healthy",
+        "service": "h3_geospatial_filter",
+        "tracked_regions": len(spatial_manager.list_regions()),
+        "base_resolution": spatial_manager.RES_BASE,
+        "storage_resolution": spatial_manager.RES_STORAGE,
     }
 
 
 @app.post("/resolve-location", response_model=LocationResponse)
 async def resolve_location(req: LocationRequest):
     """
-    Resolve a GPS coordinate (and optional user tag) to a campus building.
-
-    Resolution priority
-    -------------------
-    1. Explicit `user_tag_building_id`   → immediate O(1) dict lookup
-    2. Polygon geofencing on (lat, lon)  → exact containment test
-    3. 50-metre zone bucket              → open-area pins
+    Resolve a GPS coordinate to its immutable H3 Res-12 ID and active K=1
+    neighborhood cells for downstream Tri-Modal redundancy filtering.
     """
-
-    # ── Priority 1: Explicit user tag ─────────────────────────────────────────
-    if req.user_tag_building_id:
-        b = registry.get_by_id(req.user_tag_building_id.upper())
-        if not b:
-            raise HTTPException(
-                status_code = status.HTTP_404_NOT_FOUND,
-                detail      = f"Building ID '{req.user_tag_building_id}' is not registered. "
-                              "Call GET /buildings for the complete list.",
-            )
-        logger.info(f"[user_tag] → {b['building_id']}")
-        return LocationResponse(
-            success=True,
-            building_id=b["building_id"],
-            building_name=b["building_name"],
-            building_type=b["building_type"],
-            tags=b["tags"],
-            resolution_method="user_tag",
-            approximate_match=False,
-            message=f"Resolved to {b['building_name']} via explicit user tag.",
-        )
-
-    # ── Priority 2 & 3: GPS-based resolution ──────────────────────────────
-    # resolve() always returns a result — building polygon,
-    # or 50 m zone bucket for open-area pins. Never returns None.
-    result = registry.resolve(req.latitude, req.longitude)
+    res = spatial_manager.resolve(req.latitude, req.longitude)
 
     logger.info(
-        f"[{result['resolution_method']}] ({req.latitude},{req.longitude}) "
-        f"→ {result['building_id']}"
+        f"[h3_resolve] ({req.latitude:.5f}, {req.longitude:.5f}) -> "
+        f"res12={res['h3_res12']} | active=Res{res['active_res']} | "
+        f"query={res['query_cell']} | k1_cells={len(res['neighbor_cells'])}"
     )
+
     return LocationResponse(
         success=True,
-        building_id=result["building_id"],
-        building_name=result["building_name"],
-        building_type=result["building_type"],
-        tags=result["tags"],
-        resolution_method=result["resolution_method"],
-        approximate_match=result["approximate_match"],
+        building_id=res["h3_res12"],
+        h3_res12=res["h3_res12"],
+        parent_10=res["parent_10"],
+        active_res=res["active_res"],
+        query_cell=res["query_cell"],
+        neighbor_cells=res["neighbor_cells"],
+        open_count_in_region=res["open_count"],
+        resolution_method="h3_dynamic_kring",
         message=(
-            f"Resolved to {result['building_name']}."
-            + (" (approximate)" if result["approximate_match"] else "")
+            f"Resolved to Res-{res['active_res']} cell {res['query_cell']} "
+            f"({len(res['neighbor_cells'])} K=1 cells)."
         ),
     )
 
 
 @app.post("/resolve-location/batch")
 async def resolve_location_batch(req: BatchLocationRequest):
-    """
-    Batch-resolve up to 100 GPS coordinates in one call.
-    Useful for importing historical issues or migrating data.
-    """
+    """Batch-resolve up to 100 GPS coordinates in a single call."""
     results = []
     for loc in req.locations:
-        try:
-            result = await resolve_location(loc)
-            results.append(result.model_dump())
-        except HTTPException as exc:
-            results.append({"success": False, "error": exc.detail})
+        result = await resolve_location(loc)
+        results.append(result.model_dump())
     return {"results": results, "total": len(results)}
 
 
-@app.get("/buildings")
-async def list_buildings():
-    """Return all registered campus buildings with metadata."""
-    buildings = registry.list_all()
-    return {"buildings": buildings, "count": len(buildings)}
-
-
-@app.get("/buildings/{building_id}")
-async def get_building(building_id: str):
-    """Get details of a specific building by ID (case-insensitive)."""
-    b = registry.get_by_id(building_id.upper())
-    if not b:
-        raise HTTPException(
-            status_code = status.HTTP_404_NOT_FOUND,
-            detail      = f"Building '{building_id}' not found.",
+@app.post("/issues/open")
+async def register_open_issue(req: IssueLifecycleRequest):
+    """Call when a new issue is persisted as Open to update regional density."""
+    try:
+        updated = spatial_manager.update_open_count(
+            delta=1, h3_res12=req.h3_res12, lat=req.latitude, lon=req.longitude
         )
-    return b
+        return {"success": True, **updated}
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@app.post("/issues/resolve")
+async def register_resolved_issue(req: IssueLifecycleRequest):
+    """Call when an issue is closed/resolved to trigger hysteresis compaction."""
+    try:
+        updated = spatial_manager.update_open_count(
+            delta=-1, h3_res12=req.h3_res12, lat=req.latitude, lon=req.longitude
+        )
+        return {"success": True, **updated}
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@app.get("/regions")
+async def list_regions():
+    """Inspect all active Res-10 regions, their open counts, and current resolutions."""
+    regions = spatial_manager.list_regions()
+    return {"regions": regions, "count": len(regions)}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -363,8 +357,8 @@ async def get_building(building_id: str):
 if __name__ == "__main__":
     uvicorn.run(
         "geospatial_api:app",
-        host    = API_HOST,
-        port    = GEOSPATIAL_PORT,
-        reload  = True,
-        log_level = "info",
+        host=API_HOST,
+        port=GEOSPATIAL_PORT,
+        reload=True,
+        log_level="info",
     )
