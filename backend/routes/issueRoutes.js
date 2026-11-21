@@ -10,6 +10,7 @@ const {
   voteIssue
 } = require('../controllers/issueController');
 const { getUpdates, postUpdate } = require('../controllers/updateController');
+const { getComments, postComment } = require('../controllers/commentController');
 const auth = require('../middleware/auth');
 const validate = require('../middleware/validate');
 
@@ -38,6 +39,10 @@ router.post('/:id/updates', auth, upload.single('image'), [
   body('message').notEmpty().withMessage('Message is required'),
   body('tag').isIn(['work_in_progress', 'finished']).withMessage('Tag must be work_in_progress or finished'),
 ], validate, postUpdate);
+router.get('/:id/comments', getComments);
+router.post('/:id/comments', auth, [
+  body('content').trim().notEmpty().withMessage('Content is required'),
+], validate, postComment);
 router.post('/:id/vote', auth, voteIssue);
 
 // Generic /:id routes LAST

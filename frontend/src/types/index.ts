@@ -1,4 +1,5 @@
 export type IssueStatus = 'open' | 'in_progress' | 'resolved';
+export type IssuePriority = 'low' | 'medium' | 'high' | 'critical';
 
 export type UserRole = 'student' | 'faculty' | 'authority';
 export type UpdateTag = 'work_in_progress' | 'finished';
@@ -70,4 +71,14 @@ export interface User {
   resolvedCount: number;
   joinedAt: string;
   notificationsEnabled: boolean;
+}
+
+export interface Comment {
+  id: string;
+  issueId: string;
+  parentId: string | null;
+  author: string;
+  content: string;
+  createdAt: string;
+  replies?: Comment[];
 }

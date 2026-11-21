@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  MapPin, Clock, Eye, ChevronUp, ChevronDown, Share2, ArrowLeft,
+  MapPin, Clock, Eye, ChevronUp, ChevronDown, ChevronRight, Share2, ArrowLeft,
   Shield, Wrench, CheckCircle2, AlertCircle, ImagePlus, X, Send,
-  Loader2, Flag, Tag, User, Calendar, Activity, CheckCheck,
+  Loader2, Flag, Tag, User, Calendar, Activity, CheckCheck, MessageSquare,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { AuthContext } from '../context/AuthContext';
-import type { Issue, AuthorityUpdate } from '../types';
+import type { Issue, AuthorityUpdate, Comment as IssueComment } from '../types';
 import axios from 'axios';
 import { CATEGORY_THEME } from './FeedPage';
 
@@ -90,7 +90,6 @@ const STATUS_CFG = {
   resolved:    { label: 'Resolved',    badge: 'bg-emerald-100 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
 };
 
-
 const TAG_CFG = {
   work_in_progress: {
     label: 'Work In Progress',
@@ -163,6 +162,180 @@ const TIMELINE_ICON: Record<string, React.ReactNode> = {
   finished:        <CheckCheck size={14} />,
 };
 
+/* ─────────────────────────────────────── Comment Tree Helper ── */
+
+interface CommentNode extends IssueComment {
+  children: CommentNode[];
+}
+
+function buildCommentTree(flatComments: IssueComment[]): CommentNode[] {
+  const map = new Map<string, CommentNode>();
+  const roots: CommentNode[] = [];
+
+  flatComments.forEach(c => {
+    map.set(c.id, { ...c, children: [] });
+  });
+
+  flatComments.forEach(c => {
+    const node = map.get(c.id);
+    if (!node) return;
+    if (c.parentId && map.has(c.parentId)) {
+      map.get(c.parentId)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  return roots;
+}
+
+/* ─────────────────────────────────────── Recursive CommentItem ── */
+
+interface CommentItemProps {
+  comment: CommentNode;
+  depth: number;
+  onAddReply: (parentId: string, content: string) => Promise<boolean>;
+  isAuthenticated: boolean;
+}
+
+const CommentItem: React.FC<CommentItemProps> = ({
+  comment,
+  depth,
+  onAddReply,
+  isAuthenticated,
+}) => {
+  const [isReplying, setIsReplying] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const hasChildren = comment.children.length > 0;
+  // Cap visual indentation at depth 5
+  const canIndent = depth < 5;
+
+  const handleReplySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!replyText.trim() || isSubmitting) return;
+    setIsSubmitting(true);
+    const success = await onAddReply(comment.id, replyText.trim());
+    setIsSubmitting(false);
+    if (success) {
+      setReplyText('');
+      setIsReplying(false);
+      setIsCollapsed(false);
+    }
+  };
+
+  return (
+    <div className={`mt-3.5 ${depth > 0 && canIndent ? 'pl-3.5 sm:pl-4 border-l-2 border-slate-200 dark:border-slate-800' : ''}`}>
+      <div className="text-sm">
+        {/* Header */}
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 text-xs sm:text-sm">
+            {comment.author}
+          </span>
+          <span className="text-slate-400 dark:text-slate-500 text-xs">
+            {timeAgo(comment.createdAt)}
+          </span>
+
+          {hasChildren && (
+            <button
+              type="button"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 ml-auto transition-colors flex items-center gap-1 font-medium"
+            >
+              {isCollapsed ? (
+                <>
+                  <ChevronRight size={13} />
+                  <span>Expand ({comment.children.length})</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={13} />
+                  <span>Collapse</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Content */}
+        {!isCollapsed && (
+          <>
+            <div className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line text-sm break-words py-0.5">
+              {comment.content}
+            </div>
+
+            {/* Actions */}
+            <div className="mt-1.5 flex items-center gap-3">
+              {isAuthenticated && (
+                <button
+                  type="button"
+                  onClick={() => setIsReplying(!isReplying)}
+                  className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 transition-colors"
+                >
+                  Reply
+                </button>
+              )}
+            </div>
+
+            {/* Inline reply box */}
+            {isReplying && (
+              <form onSubmit={handleReplySubmit} className="mt-2.5 space-y-2">
+                <textarea
+                  rows={2}
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder="Write a reply..."
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm resize-none"
+                  autoFocus
+                />
+                <div className="flex items-center gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsReplying(false);
+                      setReplyText('');
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    disabled={isSubmitting || !replyText.trim()}
+                    className="text-xs px-3 py-1.5"
+                  >
+                    {isSubmitting ? <Loader2 size={13} className="animate-spin mr-1" /> : null}
+                    Reply
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {/* Child replies */}
+            {hasChildren && (
+              <div className="space-y-2 mt-1">
+                {comment.children.map((child) => (
+                  <CommentItem
+                    key={child.id}
+                    comment={child}
+                    depth={depth + 1}
+                    onAddReply={onAddReply}
+                    isAuthenticated={isAuthenticated}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 /* ══════════════════════════════════════════════════════════════ */
 
 export const IssueDetailPage = () => {
@@ -172,6 +345,7 @@ export const IssueDetailPage = () => {
 
   const [issue, setIssue] = useState<(Issue & { reporterHandle?: string }) | null>(null);
   const [updates, setUpdates] = useState<AuthorityUpdate[]>([]);
+  const [comments, setComments] = useState<IssueComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -190,13 +364,19 @@ export const IssueDetailPage = () => {
   const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Comment state
+  const [commentInput, setCommentInput] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [commentError, setCommentError] = useState('');
+
   /* ── fetch ── */
   const fetchAll = async () => {
     if (!id) return;
     try {
-      const [iRes, uRes] = await Promise.all([
+      const [iRes, uRes, cRes] = await Promise.all([
         axios.get(`/api/issues/${id}`),
         axios.get(`/api/issues/${id}/updates`),
+        axios.get(`/api/issues/${id}/comments`),
       ]);
       const norm = normalizeIssue(iRes.data, user?.id);
       setIssue(norm);
@@ -204,6 +384,7 @@ export const IssueDetailPage = () => {
       setDownvoteCount(norm.downvotes);
       setUserVote(norm.userVote);
       setUpdates((Array.isArray(uRes.data) ? uRes.data : []).map(normalizeUpdate));
+      setComments(Array.isArray(cRes.data) ? cRes.data : []);
     } catch {
       setError('Could not load this issue. It may have been removed.');
     } finally {
@@ -243,7 +424,6 @@ export const IssueDetailPage = () => {
         credentials: 'include',
         body: JSON.stringify({ type }),
       });
-      // Server response has final counts — sync to prevent drift
     } catch {
       fetchAll(); // revert on error
     }
@@ -285,6 +465,38 @@ export const IssueDetailPage = () => {
     }
   };
 
+  /* ── comments ── */
+  const handlePostComment = async (parentId: string | null, content: string): Promise<boolean> => {
+    if (!id || !content.trim()) return false;
+    try {
+      const res = await axios.post(
+        `/api/issues/${id}/comments`,
+        { content, parentId },
+        { headers: authHeaders(), withCredentials: true }
+      );
+      if (res.data) {
+        setComments(prev => [...prev, res.data]);
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      setCommentError(err?.response?.data?.message ?? 'Failed to post comment.');
+      return false;
+    }
+  };
+
+  const handleTopLevelCommentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!commentInput.trim() || submittingComment) return;
+    setSubmittingComment(true);
+    setCommentError('');
+    const success = await handlePostComment(null, commentInput.trim());
+    setSubmittingComment(false);
+    if (success) {
+      setCommentInput('');
+    }
+  };
+
   const copyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopied(true);
@@ -310,7 +522,7 @@ export const IssueDetailPage = () => {
     </div>
   );
 
-  const sc    = STATUS_CFG[issue.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.open;
+  const sc = STATUS_CFG[issue.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.open;
   const timeline = buildTimeline(issue, updates);
 
   /* ══════════════════════════════════════════════════════════════ */
@@ -475,7 +687,7 @@ export const IssueDetailPage = () => {
                       : <Activity size={14} className="text-white" />}
                   </div>
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400 py-2">
-                    {issue.status === 'resolved' ? '✅ Issue resolved' : issue.status === 'in_progress' ? '🔧 Currently in progress' : '⏳ Awaiting action'}
+                    {issue.status === 'resolved' ? 'Issue resolved' : issue.status === 'in_progress' ? 'Currently in progress' : 'Awaiting action'}
                   </div>
                 </div>
               </div>
@@ -554,6 +766,74 @@ export const IssueDetailPage = () => {
               Only authorities can post updates on this issue.
             </div>
           )}
+
+          {/* ════════════════ COMMENTS SECTION ════════════ */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 sm:p-8 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <MessageSquare size={18} className="text-brand-500" />
+                <span>Comments</span>
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                  {comments.length}
+                </span>
+              </h2>
+            </div>
+
+            {/* Top-Level Comment Form */}
+            {user ? (
+              <form onSubmit={handleTopLevelCommentSubmit} className="space-y-3">
+                <textarea
+                  rows={3}
+                  value={commentInput}
+                  onChange={(e) => setCommentInput(e.target.value)}
+                  placeholder="Write a comment..."
+                  className="w-full p-3 bg-white dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm resize-none"
+                />
+                {commentError && (
+                  <p className="text-sm text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-lg px-3 py-2">
+                    {commentError}
+                  </p>
+                )}
+                <div className="flex justify-end">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={submittingComment || !commentInput.trim()}
+                    className="gap-2 text-sm"
+                  >
+                    {submittingComment ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                    <span>Post Comment</span>
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/50 rounded-xl p-4 border border-slate-200 dark:border-slate-800 text-center">
+                Please sign in to join the conversation and post a comment.
+              </div>
+            )}
+
+            {/* Comment Thread */}
+            <div className="pt-2">
+              {comments.length === 0 ? (
+                <p className="text-sm text-slate-400 dark:text-slate-500 py-4 text-center">
+                  No comments yet. Be the first to add one.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {buildCommentTree(comments).map((rootComment) => (
+                    <CommentItem
+                      key={rootComment.id}
+                      comment={rootComment}
+                      depth={0}
+                      onAddReply={handlePostComment}
+                      isAuthenticated={!!user}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
 
         {/* ══════════════════════════ RIGHT SIDEBAR ══ */}
@@ -623,7 +903,7 @@ export const IssueDetailPage = () => {
           {/* share card */}
           <Button variant="secondary" onClick={copyLink} className="w-full justify-center gap-2">
             <Share2 size={15} />
-            {copied ? 'Link Copied! ✓' : 'Copy Link'}
+            {copied ? 'Link Copied' : 'Copy Link'}
           </Button>
         </div>
 
