@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  MapPin, Clock, Eye, ChevronUp, ChevronDown, ChevronRight, Share2, ArrowLeft,
+  MapPin, Clock, Eye, ChevronUp, ChevronDown, Share2, ArrowLeft,
   Shield, Wrench, CheckCircle2, AlertCircle, ImagePlus, X, Send,
-  Loader2, Flag, Tag, User, Calendar, Activity, CheckCheck, MessageSquare,
+  Loader2, Flag, Tag, User, Calendar, Activity, CheckCheck,
+  MessageSquare, CornerDownRight, Sparkles, RefreshCw,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { AuthContext } from '../context/AuthContext';
-import type { Issue, AuthorityUpdate, Comment as IssueComment } from '../types';
+import type { Issue, AuthorityUpdate } from '../types';
 import axios from 'axios';
 import { CATEGORY_THEME } from './FeedPage';
 
@@ -81,6 +82,228 @@ function normalizeUpdate(raw: any): AuthorityUpdate {
     createdAt: raw.createdAt ?? new Date().toISOString(),
   };
 }
+
+/* ─────────────────────────────────────────────── Comments ── */
+
+interface CommentNode {
+  id: string;
+  issueId: string;
+  parentId: string | null;
+  author: string;
+  authorRole?: string;
+  content: string;
+  createdAt: string;
+  replies: CommentNode[];
+}
+
+interface CommentOverview {
+  summary: string;
+  highlights?: string[];
+  sentiment?: string;
+  commentCountAtGeneration: number;
+}
+
+function normalizeComment(raw: any): CommentNode {
+  const authorHandle =
+    typeof raw.author === 'string'
+      ? raw.author
+      : raw.author?.anonymousHandle ?? raw.authorHandle ?? 'Anonymous';
+
+  return {
+    id: String(raw._id ?? raw.id),
+    issueId: String(raw.issueId ?? raw.issue ?? ''),
+    parentId: raw.parentId ? String(raw.parentId) : null,
+    author: authorHandle,
+    authorRole: typeof raw.author === 'object' ? raw.author?.role : undefined,
+    content: raw.content ?? '',
+    createdAt: raw.createdAt ?? new Date().toISOString(),
+    replies: Array.isArray(raw.replies) ? raw.replies.map(normalizeComment) : [],
+  };
+}
+
+function buildCommentTree(flatList: CommentNode[]): CommentNode[] {
+  const map = new Map<string, CommentNode>();
+  const roots: CommentNode[] = [];
+
+  for (const item of flatList) {
+    map.set(item.id, { ...item, replies: [...item.replies] });
+  }
+
+  for (const node of map.values()) {
+    if (node.parentId && map.has(node.parentId)) {
+      const parent = map.get(node.parentId)!;
+      if (!parent.replies.some(r => r.id === node.id)) {
+        parent.replies.push(node);
+      }
+    } else {
+      roots.push(node);
+    }
+  }
+
+  return roots;
+}
+
+function insertCommentIntoTree(tree: CommentNode[], newComment: CommentNode): CommentNode[] {
+  if (!newComment.parentId) {
+    return [...tree, newComment];
+  }
+  return tree.map(node => {
+    if (node.id === newComment.parentId) {
+      return { ...node, replies: [...node.replies, newComment] };
+    }
+    if (node.replies.length > 0) {
+      return { ...node, replies: insertCommentIntoTree(node.replies, newComment) };
+    }
+    return node;
+  });
+}
+
+function countComments(tree: CommentNode[]): number {
+  return tree.reduce((acc, node) => acc + 1 + countComments(node.replies), 0);
+}
+
+function flattenCommentsForLLM(tree: CommentNode[], depth = 0): string[] {
+  const lines: string[] = [];
+  for (const node of tree) {
+    const prefix = depth > 0 ? `${'  '.repeat(Math.min(depth, 3))}- Reply by ` : '- ';
+    lines.push(`${prefix}${node.author}: ${node.content}`);
+    if (node.replies.length > 0) {
+      lines.push(...flattenCommentsForLLM(node.replies, depth + 1));
+    }
+  }
+  return lines;
+}
+
+interface CommentItemProps {
+  comment: CommentNode;
+  depth: number;
+  canReply: boolean;
+  onReply: (parentId: string, content: string) => Promise<void>;
+}
+
+const MAX_INDENT_DEPTH = 5;
+
+const CommentItem: React.FC<CommentItemProps> = ({ comment, depth, canReply, onReply }) => {
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const hasReplies = comment.replies.length > 0;
+
+  const handleReplySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!replyText.trim()) return;
+    setSubmitting(true);
+    try {
+      await onReply(comment.id, replyText.trim());
+      setReplyText('');
+      setReplyOpen(false);
+      setCollapsed(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className={depth > 0 && depth <= MAX_INDENT_DEPTH ? 'mt-3 pl-4 border-l-2 border-slate-200 dark:border-slate-800' : depth > MAX_INDENT_DEPTH ? 'mt-3' : ''}>
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+        {/* header */}
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+              {comment.author}
+            </span>
+            {comment.authorRole === 'authority' && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400 border border-brand-200 dark:border-brand-500/30">
+                Authority
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-slate-400" title={formatDate(comment.createdAt)}>
+            {timeAgo(comment.createdAt)}
+          </span>
+        </div>
+
+        {/* body */}
+        <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
+          {comment.content}
+        </p>
+
+        {/* actions */}
+        <div className="flex items-center gap-4 mt-2.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+          {canReply && (
+            <button
+              type="button"
+              onClick={() => setReplyOpen(prev => !prev)}
+              className="inline-flex items-center gap-1 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+            >
+              <CornerDownRight size={12} />
+              Reply
+            </button>
+          )}
+          {hasReplies && (
+            <button
+              type="button"
+              onClick={() => setCollapsed(prev => !prev)}
+              className="hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+            >
+              {collapsed
+                ? `Expand (${comment.replies.length})`
+                : 'Collapse'}
+            </button>
+          )}
+        </div>
+
+        {/* inline reply box */}
+        {replyOpen && (
+          <form onSubmit={handleReplySubmit} className="mt-3 space-y-2">
+            <textarea
+              rows={2}
+              value={replyText}
+              onChange={e => setReplyText(e.target.value)}
+              placeholder="Write a reply..."
+              className="w-full p-2.5 bg-white dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm resize-none"
+            />
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => { setReplyOpen(false); setReplyText(''); }}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={submitting || !replyText.trim()}
+                className="px-3 py-1.5 text-xs gap-1.5"
+              >
+                {submitting && <Loader2 size={12} className="animate-spin" />}
+                Reply
+              </Button>
+            </div>
+          </form>
+        )}
+      </div>
+
+      {/* nested replies */}
+      {hasReplies && !collapsed && (
+        <div>
+          {comment.replies.map(reply => (
+            <CommentItem
+              key={reply.id}
+              comment={reply}
+              depth={depth + 1}
+              canReply={canReply}
+              onReply={onReply}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /* ─────────────────────────────────────── status / tag config ── */
 
@@ -162,180 +385,6 @@ const TIMELINE_ICON: Record<string, React.ReactNode> = {
   finished:        <CheckCheck size={14} />,
 };
 
-/* ─────────────────────────────────────── Comment Tree Helper ── */
-
-interface CommentNode extends IssueComment {
-  children: CommentNode[];
-}
-
-function buildCommentTree(flatComments: IssueComment[]): CommentNode[] {
-  const map = new Map<string, CommentNode>();
-  const roots: CommentNode[] = [];
-
-  flatComments.forEach(c => {
-    map.set(c.id, { ...c, children: [] });
-  });
-
-  flatComments.forEach(c => {
-    const node = map.get(c.id);
-    if (!node) return;
-    if (c.parentId && map.has(c.parentId)) {
-      map.get(c.parentId)!.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  });
-
-  return roots;
-}
-
-/* ─────────────────────────────────────── Recursive CommentItem ── */
-
-interface CommentItemProps {
-  comment: CommentNode;
-  depth: number;
-  onAddReply: (parentId: string, content: string) => Promise<boolean>;
-  isAuthenticated: boolean;
-}
-
-const CommentItem: React.FC<CommentItemProps> = ({
-  comment,
-  depth,
-  onAddReply,
-  isAuthenticated,
-}) => {
-  const [isReplying, setIsReplying] = useState(false);
-  const [replyText, setReplyText] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-
-  const hasChildren = comment.children.length > 0;
-  // Cap visual indentation at depth 5
-  const canIndent = depth < 5;
-
-  const handleReplySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!replyText.trim() || isSubmitting) return;
-    setIsSubmitting(true);
-    const success = await onAddReply(comment.id, replyText.trim());
-    setIsSubmitting(false);
-    if (success) {
-      setReplyText('');
-      setIsReplying(false);
-      setIsCollapsed(false);
-    }
-  };
-
-  return (
-    <div className={`mt-3.5 ${depth > 0 && canIndent ? 'pl-3.5 sm:pl-4 border-l-2 border-slate-200 dark:border-slate-800' : ''}`}>
-      <div className="text-sm">
-        {/* Header */}
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 text-xs sm:text-sm">
-            {comment.author}
-          </span>
-          <span className="text-slate-400 dark:text-slate-500 text-xs">
-            {timeAgo(comment.createdAt)}
-          </span>
-
-          {hasChildren && (
-            <button
-              type="button"
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 ml-auto transition-colors flex items-center gap-1 font-medium"
-            >
-              {isCollapsed ? (
-                <>
-                  <ChevronRight size={13} />
-                  <span>Expand ({comment.children.length})</span>
-                </>
-              ) : (
-                <>
-                  <ChevronDown size={13} />
-                  <span>Collapse</span>
-                </>
-              )}
-            </button>
-          )}
-        </div>
-
-        {/* Content */}
-        {!isCollapsed && (
-          <>
-            <div className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line text-sm break-words py-0.5">
-              {comment.content}
-            </div>
-
-            {/* Actions */}
-            <div className="mt-1.5 flex items-center gap-3">
-              {isAuthenticated && (
-                <button
-                  type="button"
-                  onClick={() => setIsReplying(!isReplying)}
-                  className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 transition-colors"
-                >
-                  Reply
-                </button>
-              )}
-            </div>
-
-            {/* Inline reply box */}
-            {isReplying && (
-              <form onSubmit={handleReplySubmit} className="mt-2.5 space-y-2">
-                <textarea
-                  rows={2}
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Write a reply..."
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm resize-none"
-                  autoFocus
-                />
-                <div className="flex items-center gap-2 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsReplying(false);
-                      setReplyText('');
-                    }}
-                    className="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="sm"
-                    disabled={isSubmitting || !replyText.trim()}
-                    className="text-xs px-3 py-1.5"
-                  >
-                    {isSubmitting ? <Loader2 size={13} className="animate-spin mr-1" /> : null}
-                    Reply
-                  </Button>
-                </div>
-              </form>
-            )}
-
-            {/* Child replies */}
-            {hasChildren && (
-              <div className="space-y-2 mt-1">
-                {comment.children.map((child) => (
-                  <CommentItem
-                    key={child.id}
-                    comment={child}
-                    depth={depth + 1}
-                    onAddReply={onAddReply}
-                    isAuthenticated={isAuthenticated}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
-
 /* ══════════════════════════════════════════════════════════════ */
 
 export const IssueDetailPage = () => {
@@ -345,7 +394,7 @@ export const IssueDetailPage = () => {
 
   const [issue, setIssue] = useState<(Issue & { reporterHandle?: string }) | null>(null);
   const [updates, setUpdates] = useState<AuthorityUpdate[]>([]);
-  const [comments, setComments] = useState<IssueComment[]>([]);
+  const [comments, setComments] = useState<CommentNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -355,19 +404,26 @@ export const IssueDetailPage = () => {
   const [userVote,      setUserVote]      = useState<'up' | 'down' | null>(null);
   const voteScore = upvoteCount - downvoteCount;
 
+  // Authority update form state
   const [updateMsg, setUpdateMsg] = useState('');
   const [updateTag, setUpdateTag] = useState<'work_in_progress' | 'finished'>('work_in_progress');
   const [updateImage, setUpdateImage] = useState<File | null>(null);
   const [updateImagePreview, setUpdateImagePreview] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState('');
+
+  // Comment form state
+  const [newComment, setNewComment] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
+  const [commentError, setCommentError] = useState('');
+
+  // Live LLM Discussion Overview state
+  const [overview, setOverview] = useState<CommentOverview | null>(null);
+  const [loadingOverview, setLoadingOverview] = useState(false);
+  const [overviewError, setOverviewError] = useState('');
+
   const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  // Comment state
-  const [commentInput, setCommentInput] = useState('');
-  const [submittingComment, setSubmittingComment] = useState(false);
-  const [commentError, setCommentError] = useState('');
 
   /* ── fetch ── */
   const fetchAll = async () => {
@@ -376,7 +432,7 @@ export const IssueDetailPage = () => {
       const [iRes, uRes, cRes] = await Promise.all([
         axios.get(`/api/issues/${id}`),
         axios.get(`/api/issues/${id}/updates`),
-        axios.get(`/api/issues/${id}/comments`),
+        axios.get(`/api/issues/${id}/comments`).catch(() => ({ data: [] })),
       ]);
       const norm = normalizeIssue(iRes.data, user?.id);
       setIssue(norm);
@@ -384,7 +440,9 @@ export const IssueDetailPage = () => {
       setDownvoteCount(norm.downvotes);
       setUserVote(norm.userVote);
       setUpdates((Array.isArray(uRes.data) ? uRes.data : []).map(normalizeUpdate));
-      setComments(Array.isArray(cRes.data) ? cRes.data : []);
+
+      const rawComments = Array.isArray(cRes.data) ? cRes.data : [];
+      setComments(buildCommentTree(rawComments.map(normalizeComment)));
     } catch {
       setError('Could not load this issue. It may have been removed.');
     } finally {
@@ -392,28 +450,29 @@ export const IssueDetailPage = () => {
     }
   };
 
-  useEffect(() => { fetchAll(); }, [id]);
+  useEffect(() => {
+    setOverview(null);
+    setOverviewError('');
+    fetchAll();
+  }, [id]);
 
   /* ── vote ── */
   const handleVote = async (type: 'up' | 'down') => {
     if (!id) return;
     const prev = userVote;
 
-    // ── Optimistic update (deterministic, no delta math) ──
     if (prev === type) {
-      // Click same direction → remove vote
       setUserVote(null);
       if (type === 'up')   setUpvoteCount(u => u - 1);
       else                 setDownvoteCount(d => d - 1);
     } else {
-      // New vote or direction switch
       setUserVote(type);
       if (type === 'up') {
         setUpvoteCount(u => u + 1);
-        if (prev === 'down') setDownvoteCount(d => d - 1); // switching from down
+        if (prev === 'down') setDownvoteCount(d => d - 1);
       } else {
         setDownvoteCount(d => d + 1);
-        if (prev === 'up') setUpvoteCount(u => u - 1);     // switching from up
+        if (prev === 'up') setUpvoteCount(u => u - 1);
       }
     }
 
@@ -425,7 +484,7 @@ export const IssueDetailPage = () => {
         body: JSON.stringify({ type }),
       });
     } catch {
-      fetchAll(); // revert on error
+      fetchAll();
     }
   };
 
@@ -443,7 +502,7 @@ export const IssueDetailPage = () => {
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  /* ── post update ── */
+  /* ── post authority update ── */
   const submitUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!updateMsg.trim()) return;
@@ -465,35 +524,72 @@ export const IssueDetailPage = () => {
     }
   };
 
-  /* ── comments ── */
-  const handlePostComment = async (parentId: string | null, content: string): Promise<boolean> => {
-    if (!id || !content.trim()) return false;
+  /* ── post comment / reply ── */
+  const postComment = async (parentId: string | null, content: string) => {
+    if (!id) return;
+    setCommentError('');
+    const res = await axios.post(
+      `/api/issues/${id}/comments`,
+      { content, parentId },
+      { headers: { ...authHeaders() }, withCredentials: true }
+    );
+    const created = normalizeComment(res.data);
+    setComments(prev => insertCommentIntoTree(prev, created));
+  };
+
+  const handleTopLevelComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+    setPostingComment(true);
+    setCommentError('');
     try {
-      const res = await axios.post(
-        `/api/issues/${id}/comments`,
-        { content, parentId },
-        { headers: authHeaders(), withCredentials: true }
-      );
-      if (res.data) {
-        setComments(prev => [...prev, res.data]);
-        return true;
-      }
-      return false;
+      await postComment(null, newComment.trim());
+      setNewComment('');
     } catch (err: any) {
       setCommentError(err?.response?.data?.message ?? 'Failed to post comment.');
-      return false;
+    } finally {
+      setPostingComment(false);
     }
   };
 
-  const handleTopLevelCommentSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!commentInput.trim() || submittingComment) return;
-    setSubmittingComment(true);
-    setCommentError('');
-    const success = await handlePostComment(null, commentInput.trim());
-    setSubmittingComment(false);
-    if (success) {
-      setCommentInput('');
+  const handleReplyComment = async (parentId: string, content: string) => {
+    try {
+      await postComment(parentId, content);
+    } catch (err: any) {
+      setCommentError(err?.response?.data?.message ?? 'Failed to post reply.');
+      throw err;
+    }
+  };
+
+  /* ── generate live LLM overview of comments ── */
+  const generateCommentOverview = async () => {
+    if (!id || !issue) return;
+    const total = countComments(comments);
+    if (total === 0) return;
+
+    setLoadingOverview(true);
+    setOverviewError('');
+    try {
+      const res = await axios.post(
+        `/api/issues/${id}/comments/overview`,
+        {
+          issueTitle: issue.title,
+          comments: flattenCommentsForLLM(comments),
+        },
+        { headers: { ...authHeaders() }, withCredentials: true }
+      );
+      setOverview({
+        summary: res.data?.summary ?? '',
+        highlights: Array.isArray(res.data?.highlights) ? res.data.highlights : [],
+        sentiment: res.data?.sentiment,
+        commentCountAtGeneration: total,
+      });
+    } catch (err: any) {
+      setOverviewError(
+        err?.response?.data?.message ?? 'Could not generate discussion overview. Please try again.'
+      );
+    } finally {
+      setLoadingOverview(false);
     }
   };
 
@@ -507,7 +603,7 @@ export const IssueDetailPage = () => {
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-400">
       <Loader2 size={36} className="animate-spin" />
-      <p className="text-sm">Loading issue details…</p>
+      <p className="text-sm">Loading issue details...</p>
     </div>
   );
 
@@ -524,6 +620,8 @@ export const IssueDetailPage = () => {
 
   const sc = STATUS_CFG[issue.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.open;
   const timeline = buildTimeline(issue, updates);
+  const totalComments = countComments(comments);
+  const overviewIsStale = Boolean(overview && overview.commentCountAtGeneration !== totalComments);
 
   /* ══════════════════════════════════════════════════════════════ */
   return (
@@ -541,11 +639,9 @@ export const IssueDetailPage = () => {
 
           {/* ── header card ── */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            {/* colour strip */}
             <div className={`h-1.5 w-full ${issue.status === 'resolved' ? 'bg-emerald-400' : issue.status === 'in_progress' ? 'bg-amber-400' : 'bg-indigo-500'}`} />
 
             <div className="p-6 sm:p-8">
-              {/* badges */}
               <div className="flex flex-wrap gap-2 mb-4">
                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${sc.badge}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
@@ -561,7 +657,6 @@ export const IssueDetailPage = () => {
                 {issue.title}
               </h1>
 
-              {/* meta row */}
               <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500 dark:text-slate-400 mb-5">
                 <span className="flex items-center gap-1.5">
                   <User size={14} className="text-slate-400 dark:text-slate-500" />
@@ -581,10 +676,8 @@ export const IssueDetailPage = () => {
                 </span>
               </div>
 
-              {/* description */}
               <p className="text-slate-700 dark:text-slate-300 leading-relaxed text-[15px]">{issue.description}</p>
 
-              {/* tags */}
               {issue.tags.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-4">
                   {issue.tags.map(t => (
@@ -620,7 +713,6 @@ export const IssueDetailPage = () => {
             </h2>
 
             <div className="relative">
-              {/* vertical rail */}
               <div className="absolute left-[17px] top-0 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-800" />
 
               <div className="space-y-6">
@@ -632,12 +724,10 @@ export const IssueDetailPage = () => {
 
                   return (
                     <div key={event.id} className="relative flex gap-4 pl-1">
-                      {/* dot */}
                       <div className={`relative z-10 flex items-center justify-center w-9 h-9 rounded-full ring-4 shrink-0 text-white ${dotClasses} dark:ring-slate-950`}>
                         {icon}
                       </div>
 
-                      {/* content */}
                       <div className={`flex-1 min-w-0 bg-white dark:bg-slate-900 rounded-xl border shadow-sm p-4 ${isLast ? 'border-brand-200 dark:border-brand-500/30' : 'border-slate-200 dark:border-slate-800'}`}>
                         <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
                           <div>
@@ -652,7 +742,6 @@ export const IssueDetailPage = () => {
                           </div>
                         </div>
 
-                        {/* tag badge for updates */}
                         {event.type !== 'reported' && (
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border mb-2 ${TAG_CFG[event.type as keyof typeof TAG_CFG]?.badge}`}>
                             {TAG_CFG[event.type as keyof typeof TAG_CFG]?.icon}
@@ -679,15 +768,18 @@ export const IssueDetailPage = () => {
                   );
                 })}
 
-                {/* current status tail */}
                 <div className="relative flex gap-4 pl-1">
-                  <div className={`relative z-10 w-9 h-9 rounded-full ring-4 shrink-0 flex items-center justify-center ${sc.dot} ring-slate-100`}>
+                  <div className={`relative z-10 w-9 h-9 rounded-full ring-4 shrink-0 flex items-center justify-center ${sc.dot} ring-slate-100 dark:ring-slate-950`}>
                     {issue.status === 'resolved'
                       ? <CheckCircle2 size={18} className="text-white" />
                       : <Activity size={14} className="text-white" />}
                   </div>
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400 py-2">
-                    {issue.status === 'resolved' ? 'Issue resolved' : issue.status === 'in_progress' ? 'Currently in progress' : 'Awaiting action'}
+                    {issue.status === 'resolved'
+                      ? 'Issue resolved'
+                      : issue.status === 'in_progress'
+                      ? 'Currently in progress'
+                      : 'Awaiting action'}
                   </div>
                 </div>
               </div>
@@ -701,7 +793,6 @@ export const IssueDetailPage = () => {
                 <Shield size={16} className="text-brand-500" /> Post an Authority Update
               </h3>
 
-              {/* tag selector */}
               <div className="grid grid-cols-2 gap-3">
                 {(['work_in_progress', 'finished'] as const).map(t => {
                   const c = TAG_CFG[t];
@@ -728,7 +819,7 @@ export const IssueDetailPage = () => {
                 rows={3}
                 value={updateMsg}
                 onChange={e => setUpdateMsg(e.target.value)}
-                placeholder="Describe what's been done or the current status…"
+                placeholder="Describe what's been done or the current status..."
                 className="w-full p-3 bg-white dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm resize-none"
               />
 
@@ -755,7 +846,7 @@ export const IssueDetailPage = () => {
 
               <Button type="submit" variant="primary" disabled={posting || !updateMsg.trim()} className="w-full justify-center gap-2">
                 {posting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                {posting ? 'Posting…' : 'Post Update'}
+                {posting ? 'Posting...' : 'Post Update'}
               </Button>
             </form>
           )}
@@ -767,30 +858,110 @@ export const IssueDetailPage = () => {
             </div>
           )}
 
-          {/* ════════════════ COMMENTS SECTION ════════════ */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 sm:p-8 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+          {/* ════════════════════ COMMENTS ════════════════ */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <MessageSquare size={18} className="text-brand-500" />
-                <span>Comments</span>
-                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                  {comments.length}
-                </span>
+                Comments
+                <span className="text-sm font-normal text-slate-400">({totalComments})</span>
               </h2>
             </div>
 
-            {/* Top-Level Comment Form */}
+            {/* ── Live AI Discussion Overview (Amazon-style) ── */}
+            {totalComments > 0 && (
+              <div className="bg-brand-50/50 dark:bg-brand-500/5 rounded-2xl border border-brand-200 dark:border-brand-500/25 p-5 space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={16} className="text-brand-600 dark:text-brand-400" />
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Discussion Overview
+                    </h3>
+                    {overview?.sentiment && (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-500/30">
+                        {overview.sentiment}
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={generateCommentOverview}
+                    disabled={loadingOverview}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-400 border border-brand-200 dark:border-brand-500/30 hover:bg-brand-50 dark:hover:bg-brand-500/10 disabled:opacity-50 transition-colors"
+                  >
+                    {loadingOverview ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin" />
+                        Summarizing...
+                      </>
+                    ) : overview ? (
+                      <>
+                        <RefreshCw size={12} />
+                        {overviewIsStale ? 'Update Overview' : 'Refresh'}
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={12} />
+                        Generate Overview
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {overviewError && (
+                  <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 rounded-lg px-3 py-2">
+                    {overviewError}
+                  </p>
+                )}
+
+                {overview ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                      {overview.summary}
+                    </p>
+
+                    {overview.highlights && overview.highlights.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {overview.highlights.map((point, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800"
+                          >
+                            {point}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <p className="text-[11px] text-slate-400">
+                      AI-generated from {overview.commentCountAtGeneration} comment{overview.commentCountAtGeneration === 1 ? '' : 's'}.
+                      {overviewIsStale ? ' New comments have been added since this overview was generated.' : ''}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Generate a live summary of what students and authorities are saying across all {totalComments} comment{totalComments === 1 ? '' : 's'}.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* top-level comment form */}
             {user ? (
-              <form onSubmit={handleTopLevelCommentSubmit} className="space-y-3">
+              <form
+                onSubmit={handleTopLevelComment}
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 space-y-3"
+              >
                 <textarea
                   rows={3}
-                  value={commentInput}
-                  onChange={(e) => setCommentInput(e.target.value)}
+                  value={newComment}
+                  onChange={e => setNewComment(e.target.value)}
                   placeholder="Write a comment..."
                   className="w-full p-3 bg-white dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm resize-none"
                 />
                 {commentError && (
-                  <p className="text-sm text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-lg px-3 py-2">
+                  <p className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 rounded-lg px-3 py-2">
                     {commentError}
                   </p>
                 )}
@@ -798,42 +969,39 @@ export const IssueDetailPage = () => {
                   <Button
                     type="submit"
                     variant="primary"
-                    disabled={submittingComment || !commentInput.trim()}
-                    className="gap-2 text-sm"
+                    disabled={postingComment || !newComment.trim()}
+                    className="gap-2"
                   >
-                    {submittingComment ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                    <span>Post Comment</span>
+                    {postingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    {postingComment ? 'Posting...' : 'Post Comment'}
                   </Button>
                 </div>
               </form>
             ) : (
-              <div className="text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/50 rounded-xl p-4 border border-slate-200 dark:border-slate-800 text-center">
-                Please sign in to join the conversation and post a comment.
+              <div className="text-sm text-slate-400 bg-slate-50 dark:bg-slate-900/50 rounded-xl px-4 py-3 border border-slate-100 dark:border-slate-800">
+                Sign in to post a comment.
               </div>
             )}
 
-            {/* Comment Thread */}
-            <div className="pt-2">
-              {comments.length === 0 ? (
-                <p className="text-sm text-slate-400 dark:text-slate-500 py-4 text-center">
-                  No comments yet. Be the first to add one.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {buildCommentTree(comments).map((rootComment) => (
-                    <CommentItem
-                      key={rootComment.id}
-                      comment={rootComment}
-                      depth={0}
-                      onAddReply={handlePostComment}
-                      isAuthenticated={!!user}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* comment thread list */}
+            {comments.length === 0 ? (
+              <p className="text-sm text-slate-400 py-2">
+                No comments yet. Be the first to add one.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {comments.map(comment => (
+                  <CommentItem
+                    key={comment.id}
+                    comment={comment}
+                    depth={0}
+                    canReply={Boolean(user)}
+                    onReply={handleReplyComment}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-
         </div>
 
         {/* ══════════════════════════ RIGHT SIDEBAR ══ */}
@@ -888,7 +1056,6 @@ export const IssueDetailPage = () => {
                   <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${sc.badge}`}>{sc.label}</span>
                 </dd>
               </div>
-
               <div className="flex gap-2">
                 <dt className="flex items-center gap-1.5 text-slate-400 w-24 shrink-0"><Eye size={14} /> Views</dt>
                 <dd className="font-medium text-slate-700 dark:text-slate-300">{issue.viewCount}</dd>
@@ -896,6 +1063,10 @@ export const IssueDetailPage = () => {
               <div className="flex gap-2">
                 <dt className="flex items-center gap-1.5 text-slate-400 w-24 shrink-0"><Shield size={14} /> Updates</dt>
                 <dd className="font-medium text-slate-700 dark:text-slate-300">{updates.length}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="flex items-center gap-1.5 text-slate-400 w-24 shrink-0"><MessageSquare size={14} /> Comments</dt>
+                <dd className="font-medium text-slate-700 dark:text-slate-300">{totalComments}</dd>
               </div>
             </dl>
           </div>
