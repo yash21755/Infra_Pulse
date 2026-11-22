@@ -136,7 +136,7 @@ function getSeedEvents(baseDateStr) {
       endDate: day10,
       timeWindow: '3:00 PM - 5:00 PM',
       location: 'Department Seminar Hall 1',
-      description: 'Distinguished lecture by Dr. Sarah Lin on microgrid stability and autonomous fault detection in campus energy systems.',
+      description: 'Distinguished lecture on microgrid stability and autonomous fault detection in campus energy systems.',
       sourceSubject: 'Guest Lecture: Clean Energy Grid Automation & Microgrid Design',
     },
   ];
@@ -151,7 +151,7 @@ function generateEventId(item) {
 }
 
 /**
- * Helper to call Groq API with model fallback
+ * Helper to call Groq API with automatic retry
  */
 async function callGroqLLM(messages, apiKey) {
   const preferredModel = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
@@ -159,46 +159,157 @@ async function callGroqLLM(messages, apiKey) {
     preferredModel,
     'openai/gpt-oss-20b',
     'qwen/qwen3.8-27b',
-    'openai/gpt-oss-120b',
   ];
   const uniqueModels = [...new Set(candidateModels.filter(Boolean))];
 
   let lastError = null;
   for (const model of uniqueModels) {
-    try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0.1,
-          response_format: { type: 'json_object' },
-          messages,
-        }),
-      });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            temperature: 0.1,
+            response_format: { type: 'json_object' },
+            messages,
+          }),
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content;
-        return JSON.parse(content);
-      }
+        if (response.ok) {
+          const data = await response.json();
+          const content = data.choices?.[0]?.message?.content;
+          return JSON.parse(content);
+        }
 
-      const errText = await response.text();
-      console.warn(`[calendarExtractor] Groq error for model [${model}]:`, errText);
-      lastError = new Error(errText);
-      if (response.status !== 404) {
-        break;
+        const errText = await response.text();
+        console.warn(`[calendarExtractor] Groq response for [${model}] (attempt ${attempt + 1}):`, errText);
+        lastError = new Error(errText);
+
+        if (response.status === 429) {
+          const delayMatch = errText.match(/try again in ([\d.]+)s/i);
+          const delaySec = delayMatch ? parseFloat(delayMatch[1]) : 2;
+          if (delaySec <= 3 && attempt === 0) {
+            await new Promise(r => setTimeout(r, (delaySec + 0.5) * 1000));
+            continue;
+          }
+          break;
+        }
+
+        if (response.status !== 404) {
+          break;
+        }
+      } catch (err) {
+        console.warn(`[calendarExtractor] Groq attempt failed for [${model}]:`, err.message);
+        lastError = err;
       }
-    } catch (err) {
-      console.warn(`[calendarExtractor] Groq attempt failed for [${model}]:`, err.message);
-      lastError = err;
     }
   }
 
   throw lastError || new Error('Groq extraction call failed.');
+}
+
+const MONTH_MAP = {
+  jan: '01', january: '01',
+  feb: '02', february: '02',
+  mar: '03', march: '03',
+  apr: '04', april: '04',
+  may: '05',
+  jun: '06', june: '06',
+  jul: '07', july: '07',
+  aug: '08', august: '08',
+  sep: '09', september: '09',
+  oct: '10', october: '10',
+  nov: '11', november: '11',
+  dec: '12', december: '12',
+};
+
+/**
+ * Robust date parser supporting DD-MM-YYYY, DD-MMM-YYYY, DDth Month YYYY, YYYY-MM-DD
+ */
+function parseDateString(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  // 1. DD-MM-YYYY or DD/MM/YYYY
+  const dmyMatch = text.match(/\b([0-3]?\d)[-/]([01]?\d)[-/](202\d)\b/);
+  if (dmyMatch) {
+    const day = String(parseInt(dmyMatch[1], 10)).padStart(2, '0');
+    const month = String(parseInt(dmyMatch[2], 10)).padStart(2, '0');
+    const year = dmyMatch[3];
+    if (parseInt(month, 10) <= 12 && parseInt(day, 10) <= 31) {
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  // 2. DD-MMM-YYYY (e.g. 23-Nov-2026)
+  const dMmmYMatch = text.match(/\b([0-3]?\d)[-/]([A-Za-z]{3,9})[-/](202\d)\b/);
+  if (dMmmYMatch) {
+    const day = String(parseInt(dMmmYMatch[1], 10)).padStart(2, '0');
+    const monthStr = dMmmYMatch[2].toLowerCase();
+    const month = MONTH_MAP[monthStr] || MONTH_MAP[monthStr.slice(0, 3)];
+    const year = dMmmYMatch[3];
+    if (month && parseInt(day, 10) <= 31) {
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  // 3. DDth Month YYYY (e.g. 22nd November, 2026 or 20 November 2026)
+  const verboseMatch = text.match(/\b([0-3]?\d)(?:st|nd|rd|th)?\s+(?:of\s+)?([A-Za-z]{3,9})[,\s]+(202\d)\b/i);
+  if (verboseMatch) {
+    const day = String(parseInt(verboseMatch[1], 10)).padStart(2, '0');
+    const monthStr = verboseMatch[2].toLowerCase();
+    const month = MONTH_MAP[monthStr] || MONTH_MAP[monthStr.slice(0, 3)];
+    const year = verboseMatch[3];
+    if (month && parseInt(day, 10) <= 31) {
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  // 4. YYYY-MM-DD
+  const ymdMatch = text.match(/\b(202\d)[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = String(parseInt(ymdMatch[2], 10)).padStart(2, '0');
+    const day = String(parseInt(ymdMatch[3], 10)).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  return null;
+}
+
+/**
+ * Filter out emails that have no event keywords and no upcoming dates
+ */
+function isCandidateNoticeEmail(email, todayStr) {
+  const subject = (email.subject || '').toLowerCase();
+  const body = (email.body || '').toLowerCase();
+  const text = `${subject} ${body}`;
+
+  // Check if subject explicitly has a date in the past
+  const subjDate = parseDateString(email.subject);
+  if (subjDate && subjDate < todayStr) {
+    return false;
+  }
+
+  // Check if body explicitly has only a past date
+  const bodyDate = parseDateString(email.body);
+  if (!subjDate && bodyDate && bodyDate < todayStr && !text.includes('opencode') && !text.includes('fellowship') && !text.includes('exam')) {
+    return false;
+  }
+
+  const keywords = [
+    'evaluat', 'presentat', 'viva', 'exam', 'quiz', 'test', 'mid-sem', 'end-sem',
+    'hackathon', 'workshop', 'seminar', 'symposium', 'colloquium', 'opencode', 'ctf',
+    'fellowship', 'scholarship', 'deadline', 'submission', 'due by', 'milestone',
+    'apply by', 'application', 'invitation', 'call for', 'shutdown', 'outage',
+    'maintenance', 'repair', 'construction', 'dropped from', 'transport'
+  ];
+
+  return keywords.some(kw => text.includes(kw));
 }
 
 /**
@@ -208,48 +319,98 @@ function heuristicExtract(emails, todayStr) {
   const extracted = [];
 
   for (const email of emails) {
-    const text = `${email.subject || ''} ${email.body || ''}`;
+    const subject = email.subject || '';
+    const body = email.body || '';
+    const text = `${subject} ${body}`;
     const lower = text.toLowerCase();
+    const subjLower = subject.toLowerCase();
 
+    // Categorization: prioritize academic evaluations and tests
     let category = 'event';
-    if (lower.includes('water') || lower.includes('power') || lower.includes('shutdown') || lower.includes('maintenance') || lower.includes('outage') || lower.includes('repair') || lower.includes('construction') || lower.includes('leakage')) {
-      category = 'maintenance';
-    } else if (lower.includes('exam') || lower.includes('quiz') || lower.includes('test') || lower.includes('viva') || lower.includes('mid-term') || lower.includes('end-sem')) {
+    if (
+      subjLower.includes('evaluation') ||
+      subjLower.includes('presentation') ||
+      subjLower.includes('viva') ||
+      subjLower.includes('exam') ||
+      subjLower.includes('quiz') ||
+      subjLower.includes('test') ||
+      subjLower.includes('end-sem') ||
+      subjLower.includes('mid-sem') ||
+      subjLower.includes('dropped from') ||
+      lower.includes('project evaluation')
+    ) {
       category = 'exam';
-    } else if (lower.includes('deadline') || lower.includes('submission') || lower.includes('portal') || lower.includes('due by') || lower.includes('milestone')) {
+    } else if (
+      subjLower.includes('water') ||
+      subjLower.includes('power') ||
+      subjLower.includes('shutdown') ||
+      subjLower.includes('outage') ||
+      subjLower.includes('repair') ||
+      subjLower.includes('substation') ||
+      subjLower.includes('suspension of transport') ||
+      subjLower.includes('switch upgrade')
+    ) {
+      category = 'maintenance';
+    } else if (
+      lower.includes('fellowship') ||
+      lower.includes('deadline') ||
+      lower.includes('submission') ||
+      lower.includes('due by') ||
+      lower.includes('milestone') ||
+      lower.includes('apply by') ||
+      lower.includes('application')
+    ) {
       category = 'task';
     }
 
-    // Try to extract a date in YYYY-MM-DD
-    const dateMatch = text.match(/\b(202\d-[01]\d-[0-3]\d)\b/);
-    const startDate = dateMatch ? dateMatch[1] : (email.date ? email.date.slice(0, 10) : todayStr);
-    const endDate = startDate;
+    let foundDate = parseDateString(subject) || parseDateString(body);
+    if (!foundDate && email.date) {
+      const emailDate = email.date.slice(0, 10);
+      if (emailDate >= todayStr) {
+        foundDate = emailDate;
+      }
+    }
 
-    if (endDate < todayStr) {
+    if (!foundDate || foundDate < todayStr) {
       continue;
     }
 
+    const startDate = foundDate;
+    const endDate = foundDate;
+
     let timeWindow = 'Scheduled Hours';
-    const timeMatch = text.match(/(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm)\s*[-–to]+\s*\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))/i);
+    const timeMatch = text.match(/(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm)(?:\s*[-–to]+\s*\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))?)/);
     if (timeMatch) {
       timeWindow = timeMatch[1].toUpperCase();
     }
 
-    let location = 'Campus Grounds';
-    const locMatch = text.match(/(?:at|venue|location|in|near)\s+([A-Z0-9\s,-]{3,35})(?:\.|\n|,|$)/i);
-    if (locMatch && locMatch[1].trim().length > 3) {
+    let location = 'Campus';
+    const locMatch = text.match(/(?:at|venue|location|in room|room no\.?|room)\s+([A-Z0-9\s,-]{2,30})(?:\.|\n|,|;|\(|$)/i);
+    if (locMatch && locMatch[1].trim().length > 2) {
       location = locMatch[1].trim().replace(/\s+/g, ' ');
     }
 
+    const cleanTitle = subject
+      .replace(/^(?:re|fwd|fw):\s*/gi, '')
+      .replace(/^(?:re|fwd|fw):\s*/gi, '')
+      .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      .trim();
+
+    const cleanDescription = (body || subject)
+      .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      .replace(/\s+/g, ' ')
+      .slice(0, 200)
+      .trim();
+
     const item = {
-      title: email.subject || 'Campus Announcement',
+      title: cleanTitle || 'Campus Notice',
       category,
       startDate,
       endDate,
       timeWindow,
       location,
-      description: (email.body || '').replace(/\s+/g, ' ').slice(0, 200).trim(),
-      sourceSubject: email.subject || 'Campus Notice',
+      description: cleanDescription,
+      sourceSubject: subject || 'Campus Notice',
     };
     item.id = generateEventId(item);
     extracted.push(item);
@@ -265,88 +426,104 @@ async function extractEventsWithLLM(emails) {
   const todayStr = getTodayString();
   const apiKey = process.env.GROQ_API_KEY;
 
-  if (!apiKey || !emails || emails.length === 0) {
-    console.log('[calendarExtractor] No Groq API key or empty emails. Using heuristic extraction.');
-    return heuristicExtract(emails || [], todayStr);
+  if (!emails || emails.length === 0) {
+    return [];
   }
 
-  const emailSummaries = emails.slice(0, 15).map((e, idx) => ({
-    index: idx + 1,
-    subject: e.subject || 'No Subject',
-    date: e.date || todayStr,
-    body: (e.body || '').slice(0, 600),
-  }));
+  // Pre-filter to only candidate emails relevant to events, deadlines, and notices
+  const candidateEmails = emails.filter(e => isCandidateNoticeEmail(e, todayStr));
+  const activeSet = candidateEmails.length > 0 ? candidateEmails : emails.slice(0, 15);
 
-  const systemPrompt = `You are an AI calendar extraction engine for university campus notices.
-Current server date is: ${todayStr} (YYYY-MM-DD).
-Extract only actionable events, exam schedules, assignment/milestone tasks, and campus scheduled maintenance notices.
+  if (!apiKey) {
+    console.log('[calendarExtractor] No Groq API key configured. Using heuristic extraction.');
+    return heuristicExtract(activeSet, todayStr);
+  }
 
-STRICT CONSTRAINTS:
-1. ONLY return events occurring ON or AFTER today (${todayStr}). Discard any event where endDate < ${todayStr}.
-2. Categorize each event into strictly ONE of: "exam", "event", "task", "maintenance".
-   - "maintenance": water shutdowns, electrical/power outages, elevator maintenance, Wi-Fi upgrades, building repairs, roadwork.
-   - "exam": tests, mid-terms, final exams, quizzes, vivas.
-   - "task": project deadlines, portal submissions, course registration dates.
-   - "event": campus fests, guest lectures, club meetings, hackathons, sports events.
-3. No emojis anywhere in any field.
-4. If an event spans multiple days (e.g. 3-day symposium), set startDate and endDate accordingly (YYYY-MM-DD). If single-day, startDate and endDate must be identical.
-5. Return strict JSON with key "items": Array of objects:
-   - title: concise title (e.g. "Water Supply Shutdown — BH2 & BH3")
-   - category: "maintenance" | "exam" | "event" | "task"
-   - startDate: "YYYY-MM-DD"
-   - endDate: "YYYY-MM-DD"
-   - timeWindow: string (e.g. "5:00 PM - 7:00 PM" or "All Day")
-   - location: string (e.g. "BH2, BH3 near BH5")
-   - description: 1-2 sentence clean description without emojis
-   - sourceSubject: string matching the email subject`;
+  // Keep batches to 7 emails and 280-char snippets to stay well under TPM/OTPM thresholds
+  const BATCH_SIZE = 7;
+  const batches = [];
+  for (let i = 0; i < activeSet.length; i += BATCH_SIZE) {
+    batches.push(activeSet.slice(i, i + BATCH_SIZE));
+  }
 
-  const userPrompt = `Extract calendar items from these campus emails:\n${JSON.stringify(emailSummaries, null, 2)}`;
+  const systemPrompt = `You are an AI campus calendar and notices extraction engine.
+Current date is: ${todayStr} (YYYY-MM-DD).
+Extract all actionable events, project evaluations, viva presentations, exams, hackathons, competitions, fellowship applications, deadlines, and campus maintenance notices.
 
-  try {
-    const parsed = await callGroqLLM(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      apiKey
-    );
+CRITICAL RULES:
+1. Include every email that mentions an upcoming or currently ongoing event/deadline whose endDate >= ${todayStr}.
+2. Categorize strictly as:
+   - "exam": project evaluations, viva presentations, mid-term/end-term exams, quizzes.
+   - "event": hackathons, fests, technical contests, workshops, seminars, symposiums.
+   - "task": fellowships, scholarship applications, milestone deadlines, portal submissions, course registration.
+   - "maintenance": water, power, internet/Wi-Fi, elevator, transport shutdowns or repairs.
+3. If an event is multi-day or ongoing (e.g. OpenCode runs until 25 December 2026), set startDate and endDate accordingly (YYYY-MM-DD). If single-day, startDate and endDate must be identical.
+4. If a submission deadline is given (e.g. submit by 30th November 2026), set startDate and endDate to that date.
+5. No emojis in any output field.
+6. Return JSON format: { "items": [ { "title": "...", "category": "exam"|"event"|"task"|"maintenance", "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "timeWindow": "...", "location": "...", "description": "...", "sourceSubject": "..." } ] }`;
 
-    const items = Array.isArray(parsed?.items) ? parsed.items : [];
-    const valid = [];
+  const allExtracted = [];
 
-    for (const item of items) {
-      if (!item.title || !item.startDate) continue;
+  for (let bIdx = 0; bIdx < batches.length; bIdx++) {
+    const batch = batches[bIdx];
+    const emailSummaries = batch.map((e, idx) => ({
+      index: idx + 1,
+      sender: e.sender || '',
+      subject: e.subject || 'No Subject',
+      date: e.date || todayStr,
+      body: (e.body || '').slice(0, 280),
+    }));
 
-      const startDate = String(item.startDate).slice(0, 10);
-      const endDate = item.endDate ? String(item.endDate).slice(0, 10) : startDate;
+    const userPrompt = `Extract calendar items from these campus emails:\n${JSON.stringify(emailSummaries, null, 2)}`;
 
-      // Filter out past events
-      if (endDate < todayStr) {
-        continue;
+    try {
+      const parsed = await callGroqLLM(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        apiKey
+      );
+
+      const items = Array.isArray(parsed?.items) ? parsed.items : [];
+      for (const item of items) {
+        if (!item.title || !item.startDate) continue;
+
+        const startDate = String(item.startDate).slice(0, 10);
+        const endDate = item.endDate ? String(item.endDate).slice(0, 10) : startDate;
+
+        if (endDate < todayStr) {
+          continue;
+        }
+
+        const validCategories = ['exam', 'event', 'task', 'maintenance'];
+        const category = validCategories.includes(item.category) ? item.category : 'event';
+
+        const cleanItem = {
+          title: String(item.title).replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim(),
+          category,
+          startDate,
+          endDate,
+          timeWindow: item.timeWindow || 'All Day',
+          location: item.location || 'Campus',
+          description: String(item.description || '').replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim(),
+          sourceSubject: item.sourceSubject || 'Campus Notice',
+        };
+        cleanItem.id = generateEventId(cleanItem);
+        allExtracted.push(cleanItem);
       }
 
-      const validCategories = ['exam', 'event', 'task', 'maintenance'];
-      const category = validCategories.includes(item.category) ? item.category : 'event';
-
-      const cleanItem = {
-        title: String(item.title).replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim(),
-        category,
-        startDate,
-        endDate,
-        timeWindow: item.timeWindow || 'All Day',
-        location: item.location || 'Campus',
-        description: String(item.description || '').replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim(),
-        sourceSubject: item.sourceSubject || 'Campus Notice',
-      };
-      cleanItem.id = item.id || generateEventId(cleanItem);
-      valid.push(cleanItem);
+      if (bIdx < batches.length - 1) {
+        await new Promise(r => setTimeout(r, 1200));
+      }
+    } catch (err) {
+      console.warn(`[calendarExtractor] Groq batch ${bIdx + 1}/${batches.length} failed, running heuristic on batch:`, err.message);
+      const fallbackItems = heuristicExtract(batch, todayStr);
+      allExtracted.push(...fallbackItems);
     }
-
-    return valid.length > 0 ? valid : heuristicExtract(emails, todayStr);
-  } catch (err) {
-    console.error('[calendarExtractor] Groq extraction failed, using heuristic fallback:', err.message);
-    return heuristicExtract(emails, todayStr);
   }
+
+  return allExtracted.length > 0 ? allExtracted : heuristicExtract(activeSet, todayStr);
 }
 
 /**
@@ -391,30 +568,141 @@ function getCachedEvents() {
 }
 
 /**
- * Build a canonical deduplication key based on category, date, and significant title tokens
+ * Extract normalized keywords from title for robust deduplication
+ */
+function getTitleTokenKey(title) {
+  const raw = `${title || ''}`.toLowerCase();
+  const metaWords = new Set([
+    'and', 'the', 'for', 'with', 'from', 'this', 'that', 'schedule', 'notice',
+    'board', 'date', 'time', 'venue', 'room', 'campus', 'all', 'day', 'hours',
+    'application', 'applications', 'apply', 'open', 'deadline', 'reminder',
+    'invite', 'invitation', 'update', 'regarding', 'urgent', 'gentle', 're', 'fwd',
+    'startups', 'startup', 'students', 'student', 'can', 'will', 'may', 'must',
+    'are', 'has', 'have', 'jan', 'january', 'feb', 'february', 'mar', 'march',
+    'apr', 'april', 'may', 'jun', 'june', 'jul', 'july', 'aug', 'august',
+    'sep', 'september', 'oct', 'october', 'nov', 'november', 'dec', 'december'
+  ]);
+  const words = raw
+    .replace(/[^a-z]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !metaWords.has(w));
+  const uniqueWords = [...new Set(words)].sort();
+  return uniqueWords.slice(0, 3).join('_');
+}
+
+/**
+ * Normalizes subject to group thread replies together
+ */
+function normalizeThreadSubject(subject) {
+  return (subject || '')
+    .toLowerCase()
+    .replace(/^(?:re|fwd|fw):\s*/gi, '')
+    .replace(/^(?:re|fwd|fw):\s*/gi, '')
+    .replace(/\[f\.no.*?\]/gi, '')
+    .trim();
+}
+
+/**
+ * Build a canonical deduplication key based on start date and significant title keywords
  */
 function getEventCanonicalKey(item) {
-  const raw = `${item.title || ''}`.toLowerCase();
-  const cleaned = raw
-    .replace(/(?:urgent\s+)?notice:\s*/gi, '')
-    .replace(/(?:reminder|invitation):\s*/gi, '')
-    .replace(/[^a-z0-9]/g, ' ')
-    .trim();
-  const words = cleaned.split(/\s+/).filter(w => w.length > 2);
-  const tokenKey = [...new Set(words)].slice(0, 5).sort().join('_');
+  const tokenKey = getTitleTokenKey(item.title);
   const start = (item.startDate || '').slice(0, 10);
-  return `${item.category}_${start}_${tokenKey}`;
+  return `${start}_${tokenKey || 'item'}`;
+}
+
+/**
+ * Priority rank for category assignment when merging duplicate items
+ */
+const CATEGORY_PRIORITY = {
+  exam: 4,
+  maintenance: 3,
+  task: 2,
+  event: 1,
+};
+
+/**
+ * Merge two duplicate items into the best combined item
+ */
+function mergeDuplicateEvents(existing, incoming) {
+  const category = (CATEGORY_PRIORITY[incoming.category] || 1) >= (CATEGORY_PRIORITY[existing.category] || 1)
+    ? incoming.category
+    : existing.category;
+
+  const description = (incoming.description || '').length > (existing.description || '').length
+    ? incoming.description
+    : existing.description;
+
+  const timeWindow = incoming.timeWindow && incoming.timeWindow !== 'Scheduled Hours' && incoming.timeWindow !== 'All Day'
+    ? incoming.timeWindow
+    : existing.timeWindow || 'All Day';
+
+  const location = incoming.location && incoming.location !== 'Campus'
+    ? incoming.location
+    : existing.location || 'Campus';
+
+  // Expand start & end date span if one item covers a wider date window
+  const startDate = existing.startDate <= incoming.startDate ? existing.startDate : incoming.startDate;
+  const existingEnd = existing.endDate || existing.startDate;
+  const incomingEnd = incoming.endDate || incoming.startDate;
+  const endDate = existingEnd >= incomingEnd ? existingEnd : incomingEnd;
+
+  return {
+    ...existing,
+    ...incoming,
+    startDate,
+    endDate,
+    category,
+    description,
+    timeWindow,
+    location,
+  };
+}
+
+/**
+ * Find matching existing key by thread subject or title token overlap with overlapping dates
+ */
+function findMatchingCanonicalKey(canonicalMap, incoming) {
+  const incomingSubjKey = normalizeThreadSubject(incoming.sourceSubject || '');
+  const incomingTokens = getTitleTokenKey(incoming.title);
+  const incomingStart = incoming.startDate;
+  const incomingEnd = incoming.endDate || incoming.startDate;
+
+  for (const [key, existing] of canonicalMap.entries()) {
+    const existingStart = existing.startDate;
+    const existingEnd = existing.endDate || existing.startDate;
+    const datesOverlap = incomingStart <= existingEnd && incomingEnd >= existingStart;
+
+    // 1. Thread-level match: if from the same email notice thread and dates overlap
+    const existingSubjKey = normalizeThreadSubject(existing.sourceSubject || '');
+    if (incomingSubjKey && existingSubjKey && incomingSubjKey === existingSubjKey && datesOverlap) {
+      return key;
+    }
+
+    // 2. Token overlap: if significant title tokens match and dates overlap
+    const existingTokens = getTitleTokenKey(existing.title);
+    if (datesOverlap && incomingTokens && existingTokens) {
+      const inWords = incomingTokens.split('_');
+      const exWords = existingTokens.split('_');
+      const common = inWords.filter(w => exWords.includes(w));
+      if (common.length >= 2 || (common.length >= 1 && (inWords.length === 1 || exWords.length === 1))) {
+        return key;
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
  * Extract events from emails, merge and deduplicate with cache, and persist.
- * In simulated/demo mode, avoids duplicating identical events across syncs.
+ * Prevents duplicates in both demo mode and live sync.
  */
 async function syncAndCacheEvents(emails, source = 'mcp') {
   initCache();
   const todayStr = getTodayString();
 
-  // If source is simulated sample notices, replace with clean canonical samples without duplicating
+  // If source is simulated sample notices, cleanly replace with canonical seed events
   if (source === 'simulated') {
     const cleanSamples = getSeedEvents(todayStr);
     const cachePayload = {
@@ -434,7 +722,7 @@ async function syncAndCacheEvents(emails, source = 'mcp') {
   // Real emails from IMAP or MCP
   const newItems = await extractEventsWithLLM(emails);
   const existingCache = getCachedEvents();
-  
+
   // Exclude initial seed events once live items arrive
   const existingEvents = (existingCache.events || []).filter(
     e => !e.id?.startsWith('maint-') && !e.id?.startsWith('exam-') && !e.id?.startsWith('event-') && !e.id?.startsWith('task-')
@@ -442,6 +730,7 @@ async function syncAndCacheEvents(emails, source = 'mcp') {
 
   const canonicalMap = new Map();
 
+  // Preserve valid upcoming existing live events
   for (const ev of existingEvents) {
     if ((ev.endDate || ev.startDate) >= todayStr) {
       const key = getEventCanonicalKey(ev);
@@ -449,18 +738,24 @@ async function syncAndCacheEvents(emails, source = 'mcp') {
     }
   }
 
+  // Merge newly extracted live events
   for (const item of newItems) {
     if ((item.endDate || item.startDate) >= todayStr) {
-      const key = getEventCanonicalKey(item);
-      canonicalMap.set(key, item);
+      const matchedKey = findMatchingCanonicalKey(canonicalMap, item) || getEventCanonicalKey(item);
+      if (canonicalMap.has(matchedKey)) {
+        canonicalMap.set(matchedKey, mergeDuplicateEvents(canonicalMap.get(matchedKey), item));
+      } else {
+        canonicalMap.set(matchedKey, item);
+      }
     }
   }
 
   let finalEvents = Array.from(canonicalMap.values()).sort((a, b) => a.startDate.localeCompare(b.startDate));
+
   if (finalEvents.length === 0) {
     finalEvents = getSeedEvents(todayStr);
   } else {
-    // If user's inbox has no maintenance notices yet, supplement with campus maintenance notices
+    // If user's inbox has no physical maintenance notices, supplement with campus maintenance notices
     const hasMaintenance = finalEvents.some(e => e.category === 'maintenance');
     if (!hasMaintenance) {
       const seedMaintenance = getSeedEvents(todayStr).filter(e => e.category === 'maintenance');
