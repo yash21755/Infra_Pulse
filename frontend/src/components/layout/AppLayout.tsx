@@ -1,6 +1,6 @@
-import React, { useState, useContext } from 'react';
+import { useState, useContext } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Home, Map as MapIcon, PlusCircle, BarChart3, Bell, User, Settings, LogOut, Menu, Moon, Sun } from 'lucide-react';
+import { Home, Map as MapIcon, PlusCircle, BarChart3, Calendar, Bell, User, Settings, LogOut, Menu, Moon, Sun } from 'lucide-react';
 import { AuthContext } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -19,6 +19,7 @@ export const AppLayout = () => {
     { to: '/feed', icon: Home, label: 'Feed' },
     { to: '/map', icon: MapIcon, label: 'Map View' },
     { to: '/dashboard', icon: BarChart3, label: 'Dashboard' },
+    { to: '/calendar', icon: Calendar, label: 'Calendar' },
     { to: '/notifications', icon: Bell, label: 'Notifications' },
     { to: '/profile', icon: User, label: 'Profile' },
     { to: '/settings', icon: Settings, label: 'Settings' },
@@ -86,11 +87,12 @@ export const AppLayout = () => {
 
         {/* Mobile Bottom Nav */}
         <nav className="md:hidden flex items-center justify-around bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-3 shrink-0 pb-safe">
-          <NavLink to="/feed" className={({isActive}) => `p-2 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'}`}><Home size={24}/></NavLink>
-          <NavLink to="/map" className={({isActive}) => `p-2 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'}`}><MapIcon size={24}/></NavLink>
-          <NavLink to="/report" className="p-3 bg-brand-600 text-white rounded-full shadow-md -mt-8"><PlusCircle size={24}/></NavLink>
-          <NavLink to="/dashboard" className={({isActive}) => `p-2 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'}`}><BarChart3 size={24}/></NavLink>
-          <NavLink to="/profile" className={({isActive}) => `p-2 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'}`}><User size={24}/></NavLink>
+          <NavLink to="/feed" className={({isActive}) => `p-2 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'}`}><Home size={22}/></NavLink>
+          <NavLink to="/map" className={({isActive}) => `p-2 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'}`}><MapIcon size={22}/></NavLink>
+          <NavLink to="/report" className="p-2.5 bg-brand-600 text-white rounded-full shadow-md -mt-6"><PlusCircle size={22}/></NavLink>
+          <NavLink to="/dashboard" className={({isActive}) => `p-2 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'}`}><BarChart3 size={22}/></NavLink>
+          <NavLink to="/calendar" className={({isActive}) => `p-2 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'}`}><Calendar size={22}/></NavLink>
+          <NavLink to="/profile" className={({isActive}) => `p-2 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'}`}><User size={22}/></NavLink>
         </nav>
       </main>
     </div>

@@ -1,0 +1,83 @@
+{
+  "lastSynced": "2026-11-22T08:29:11.526Z",
+  "syncStatus": "simulated_sync",
+  "events": [
+    {
+      "id": "maint-water-bh2-bh3",
+      "title": "Water Supply Shutdown — BH2 & BH3",
+      "category": "maintenance",
+      "startDate": "2026-11-23",
+      "endDate": "2026-11-23",
+      "timeWindow": "5:00 PM - 7:00 PM",
+      "location": "BH2, BH3 (leakage near BH5)",
+      "description": "Water will be shut down in BH2 and BH3 from 5:00 PM to 7:00 PM due to urgent main line pipe repair near BH5 pump station.",
+      "sourceSubject": "Urgent Notice: Scheduled Water Supply Shutdown for BH2 & BH3"
+    },
+    {
+      "id": "exam-cs402-distrib",
+      "title": "Mid-Semester Exam: CS402 Distributed Systems",
+      "category": "exam",
+      "startDate": "2026-11-24",
+      "endDate": "2026-11-24",
+      "timeWindow": "9:30 AM - 12:30 PM",
+      "location": "Lecture Hall Complex LHC-3 (Halls 301, 302)",
+      "description": "Mid-term examination covering distributed consensus, Raft protocol, and RPC architecture. Bring Institute ID card.",
+      "sourceSubject": "Mid-Semester Exam Schedule: CS402 Distributed Systems"
+    },
+    {
+      "id": "maint-power-substation",
+      "title": "Power Grid Maintenance — Central Library & IT Wing",
+      "category": "maintenance",
+      "startDate": "2026-11-25",
+      "endDate": "2026-11-25",
+      "timeWindow": "10:00 AM - 1:00 PM",
+      "location": "Central Library, Computer Center, North Dining Hall",
+      "description": "Preventive maintenance of 11kV substation. Emergency lighting and server backup active; main AC and lifts will be paused.",
+      "sourceSubject": "Notice: Scheduled Substation Power Maintenance & Outage"
+    },
+    {
+      "id": "event-tech-ai-symposium",
+      "title": "Annual Campus Tech & AI Symposium 2026",
+      "category": "event",
+      "startDate": "2026-11-26",
+      "endDate": "2026-11-28",
+      "timeWindow": "9:00 AM - 6:00 PM Daily",
+      "location": "Main Auditorium & Innovation Center",
+      "description": "Three-day national conference featuring research papers, open-source workshops, hackathon tracks, and industry demos.",
+      "sourceSubject": "Invitation: Annual Campus Tech & AI Symposium 2026"
+    },
+    {
+      "id": "maint-wifi-ap-upgrade",
+      "title": "Wi-Fi & Core Switch Network Upgrade",
+      "category": "maintenance",
+      "startDate": "2026-11-29",
+      "endDate": "2026-11-29",
+      "timeWindow": "11:00 PM - 3:00 AM",
+      "location": "Academic Block B & Academic Block C",
+      "description": "Network firmware update and Wi-Fi 6 access point replacement. Intermittent network disruptions expected overnight.",
+      "sourceSubject": "Scheduled Maintenance: Core Network Switch & Wi-Fi Access Point Upgrade"
+    },
+    {
+      "id": "task-capstone-milestone",
+      "title": "Capstone Project Milestone 2 Submission",
+      "category": "task",
+      "startDate": "2026-11-30",
+      "endDate": "2026-11-30",
+      "timeWindow": "Due by 11:59 PM",
+      "location": "Academic Portal Submission",
+      "description": "Upload project codebase URL, sprint burndown report, and architectural diagrams to the course management portal.",
+      "sourceSubject": "Reminder: Final Year Capstone Project Milestone Submission"
+    },
+    {
+      "id": "event-clean-energy-lecture",
+      "title": "Guest Lecture: Clean Energy Grid Automation",
+      "category": "event",
+      "startDate": "2026-12-02",
+      "endDate": "2026-12-02",
+      "timeWindow": "3:00 PM - 5:00 PM",
+      "location": "Department Seminar Hall 1",
+      "description": "Distinguished lecture by Dr. Sarah Lin on microgrid stability and autonomous fault detection in campus energy systems.",
+      "sourceSubject": "Guest Lecture: Clean Energy Grid Automation & Microgrid Design"
+    }
+  ]
+}

@@ -38,6 +38,7 @@ app.use('/api/issues', require('./routes/issueRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/stats', require('./routes/statsRoutes'));
+app.use('/api/calendar', require('./routes/calendarRoutes'));
 
 // Error Handler
 app.use(errorHandler);

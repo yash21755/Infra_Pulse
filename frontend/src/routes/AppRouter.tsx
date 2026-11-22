@@ -11,6 +11,7 @@ import { ReportPage } from '../pages/ReportPage';
 import { IssueDetailPage } from '../pages/IssueDetailPage';
 import { MapPage } from '../pages/MapPage';
 import { DashboardPage } from '../pages/DashboardPage';
+import { CalendarPage } from '../pages/CalendarPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { NotificationsPage } from '../pages/NotificationsPage';
 import { SettingsPage } from '../pages/SettingsPage';
@@ -37,6 +38,7 @@ export const AppRouter = () => {
           <Route path="issues/:id" element={<IssueDetailPage />} />
           <Route path="map" element={<MapPage />} />
           <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="calendar" element={<CalendarPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="settings" element={<SettingsPage />} />
